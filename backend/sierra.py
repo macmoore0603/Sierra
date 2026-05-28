@@ -40,7 +40,7 @@ MODEL = os.getenv(
 DEFAULT_MODE = "camera"
 
 
-class EnvironmentError(Exception):
+class ConfigurationError(Exception):
     """Raised when .env or GEMINI_API_KEY is missing / invalid."""
 
 
@@ -51,7 +51,7 @@ def _validate_environment():
     actionable message **and** raises `EnvironmentError` so the caller
     can decide how to handle it (the server stays alive and can report
     the problem to the frontend instead of crashing silently).
-    """
+    """  # noqa: E501
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, ".env")
     env_path = os.path.normpath(env_path)
 
@@ -76,7 +76,7 @@ def _validate_environment():
             "   https://aistudio.google.com/app/apikey\n"
             "========================================================\n"
         )
-        raise EnvironmentError(msg)
+        raise ConfigurationError(msg)
 
     load_dotenv(dotenv_path=env_path)
     api_key = os.getenv("GEMINI_API_KEY")
@@ -103,7 +103,7 @@ def _validate_environment():
             "   https://aistudio.google.com/app/apikey\n"
             "========================================================\n"
         )
-        raise EnvironmentError(msg)
+        raise ConfigurationError(msg)
 
     return api_key
 
@@ -112,7 +112,7 @@ def _validate_environment():
 # report the error to the frontend instead of crashing before it starts.
 try:
     _gemini_api_key = _validate_environment()
-except EnvironmentError:
+except ConfigurationError:
     _gemini_api_key = None
 
 client = (
