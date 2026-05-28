@@ -30,7 +30,13 @@ SEND_SAMPLE_RATE = 16000
 RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE = 1024
 
-MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
+# The preview model may be rotated by Google; update this value if
+# voice stops connecting.  Check available models at:
+#   https://ai.google.dev/gemini-api/docs/models
+MODEL = os.getenv(
+    "GEMINI_MODEL",
+    "models/gemini-2.5-flash-preview-native-audio",
+)
 DEFAULT_MODE = "camera"
 
 
@@ -1224,10 +1230,14 @@ class AudioLoop:
     async def run(self, start_message=None):
         retry_delay = 1
         is_reconnect = False
+        max_retries = 5
+        attempt = 0
         
         while not self.stop_event.is_set():
+            attempt += 1
             try:
-                print(f"[Sierra DEBUG] [CONNECT] Connecting to Gemini Live API...")
+                print(f"[Sierra DEBUG] [CONNECT] Connecting to Gemini Live API (attempt {attempt})...")
+                print(f"[Sierra DEBUG] [CONNECT] Model: {MODEL}")
                 async with (
                     client.aio.live.connect(model=MODEL, config=config) as session,
                     asyncio.TaskGroup() as tg,
@@ -1276,8 +1286,9 @@ class AudioLoop:
                         print(f"[Sierra DEBUG] [RECONNECT] Sending restoration context to model...")
                         await self.session.send(input=context_msg, end_of_turn=True)
 
-                    # Reset retry delay on successful connection
+                    # Reset retry state on successful connection
                     retry_delay = 1
+                    attempt = 0
                     
                     # Wait until stop event, or until the session task group exits (which happens on error)
                     # Actually, the TaskGroup context manager will exit if any tasks fail/cancel.
@@ -1336,11 +1347,38 @@ class AudioLoop:
 
                 if self.stop_event.is_set():
                     break
-                
+
+                # Detect model-not-found / deprecated model errors
+                if "not found" in error_str or "404" in error_str or "does not exist" in error_str:
+                    msg = (
+                        f"Model '{MODEL}' not found — it may have been "
+                        f"deprecated by Google. Update GEMINI_MODEL in your "
+                        f".env file. See https://ai.google.dev/gemini-api/docs/models"
+                    )
+                    print(f"\n{'='*56}\n ERROR: {msg}\n{'='*56}")
+                    if self.on_error:
+                        self.on_error(msg)
+                    break
+
+                # Surface every connection error to the frontend so the user
+                # is not left staring at silence.
+                if self.on_error:
+                    self.on_error(f"Voice connection error (attempt {attempt}): {e}")
+
+                if attempt >= max_retries:
+                    fail_msg = (
+                        f"Failed to connect after {max_retries} attempts. "
+                        f"Last error: {e}"
+                    )
+                    print(f"[Sierra DEBUG] [FATAL] {fail_msg}")
+                    if self.on_error:
+                        self.on_error(fail_msg)
+                    break
+
                 print(f"[Sierra DEBUG] [RETRY] Reconnecting in {retry_delay} seconds...")
                 await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay * 2, 10) # Exponential backoff capped at 10s
-                is_reconnect = True # Next loop will be a reconnect
+                retry_delay = min(retry_delay * 2, 10)
+                is_reconnect = True
                 
             finally:
                 # Cleanup before retry
