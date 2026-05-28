@@ -1301,8 +1301,19 @@ class AudioLoop:
                 error_str = str(e).lower()
                 print(f"[Sierra DEBUG] [ERR] Connection Error: {e}")
 
-                # Detect authentication / API-key errors and surface a clear message
-                if "api key" in error_str or "401" in error_str or "permission" in error_str or "invalid" in error_str:
+                # Detect authentication / API-key errors and surface a clear message.
+                # Keep checks narrow to avoid matching unrelated errors
+                # (e.g. PyAudio "Invalid device", OS "Permission denied").
+                is_api_key_error = (
+                    "api key" in error_str
+                    or "api_key" in error_str
+                    or "401" in error_str
+                    or "403" in error_str
+                    or "unauthenticated" in error_str
+                    or "permission_denied" in error_str
+                    or "invalid api key" in error_str
+                )
+                if is_api_key_error:
                     print(
                         "\n"
                         "========================================================\n"
