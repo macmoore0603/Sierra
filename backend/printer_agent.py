@@ -839,9 +839,6 @@ class PrinterAgent:
         except Exception as e:
             print(f"[PRINTER] Moonraker upload error: {e}")
             return False
-        except Exception as e:
-            print(f"[PRINTER] Moonraker upload error: {e}")
-            return False
 
     async def get_print_status(self, target: str) -> Optional[PrintStatus]:
         """
@@ -980,14 +977,18 @@ class PrinterAgent:
         return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-    async def print_stl(self, stl_path: str, printer_name: str, 
-                        profile_path: Optional[str] = None, 
-                        root_path: Optional[str] = None) -> Dict[str, str]:
+    async def print_stl(self, stl_path: str, printer_name: str,
+                        profile_path: Optional[str] = None,
+                        root_path: Optional[str] = None,
+                        progress_callback: Optional[Any] = None) -> Dict[str, str]:
         """
         Orchestrate the full printing workflow: Slice -> Upload -> Print.
+
+        ``progress_callback`` is threaded through to ``slice_stl`` so the UI
+        can show live slicing progress.
         """
         print(f"[PRINTER] Starting print job for {stl_path} on {printer_name}")
-        
+
         # 1. Resolve Printer
         printer = self._resolve_printer(printer_name)
         if not printer:
@@ -996,10 +997,11 @@ class PrinterAgent:
         # 2. Slice STL
         # Use printer name to auto-detect profiles if not provided
         gcode_path = await self.slice_stl(
-            stl_path, 
+            stl_path,
             profile_path=profile_path,
+            progress_callback=progress_callback,
             root_path=root_path,
-            printer_name=printer.name 
+            printer_name=printer.name
         )
         
         if not gcode_path:

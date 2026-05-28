@@ -585,6 +585,7 @@ async def save_memory(sid, data):
             for msg in messages:
                 sender = msg.get('sender', 'Unknown')
                 text = msg.get('text', '')
+                f.write(f"[{sender}]: {text}\n")
         print(f"Conversation saved to {filename}")
         await sio.emit('status', {'msg': 'Memory Saved Successfully'})
 

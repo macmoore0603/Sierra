@@ -167,7 +167,7 @@ export_stl(result_part, 'output.stl')
                     stdout, stderr = proc.stdout, proc.stderr
                 except Exception as e:
                      print(f"[CadAgent DEBUG] [ERR] Subprocess run failed: {e}")
-                     proc = type('obj', (object,), {'returncode': 1})
+                     proc = type('obj', (object,), {'returncode': 1})()
                      stdout = ""
                      stderr = str(e)
                 

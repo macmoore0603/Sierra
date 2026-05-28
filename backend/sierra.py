@@ -732,49 +732,44 @@ class AudioLoop:
                                     if self.on_tool_confirmation:
                                         import uuid
                                         request_id = str(uuid.uuid4())
-                                    print(f"[Sierra DEBUG] [STOP] Requesting confirmation for '{fc.name}' (ID: {request_id})")
-                                    
-                                    future = asyncio.Future()
-                                    self._pending_confirmations[request_id] = future
-                                    
-                                    self.on_tool_confirmation({
-                                        "id": request_id, 
-                                        "tool": fc.name, 
-                                        "args": fc.args
-                                    })
-                                    
-                                    try:
-                                        # Wait for user response
-                                        confirmed = await future
+                                        print(f"[Sierra DEBUG] [STOP] Requesting confirmation for '{fc.name}' (ID: {request_id})")
 
-                                    finally:
-                                        self._pending_confirmations.pop(request_id, None)
+                                        future = asyncio.Future()
+                                        self._pending_confirmations[request_id] = future
 
-                                    print(f"[Sierra DEBUG] [CONFIRM] Request {request_id} resolved. Confirmed: {confirmed}")
+                                        self.on_tool_confirmation({
+                                            "id": request_id,
+                                            "tool": fc.name,
+                                            "args": fc.args
+                                        })
 
-                                    if not confirmed:
-                                        print(f"[Sierra DEBUG] [DENY] Tool call '{fc.name}' denied by user.")
-                                        function_response = types.FunctionResponse(
-                                            id=fc.id,
-                                            name=fc.name,
-                                            response={
-                                                "result": "User denied the request to use this tool.",
-                                            }
+                                        try:
+                                            # Wait for user response
+                                            confirmed = await future
+                                        finally:
+                                            self._pending_confirmations.pop(request_id, None)
+
+                                        print(f"[Sierra DEBUG] [CONFIRM] Request {request_id} resolved. Confirmed: {confirmed}")
+
+                                        if not confirmed:
+                                            print(f"[Sierra DEBUG] [DENY] Tool call '{fc.name}' denied by user.")
+                                            function_response = types.FunctionResponse(
+                                                id=fc.id,
+                                                name=fc.name,
+                                                response={
+                                                    "result": "User denied the request to use this tool.",
+                                                }
+                                            )
+                                            function_responses.append(function_response)
+                                            continue
+                                    else:
+                                        # No confirmation callback wired up — fail safe: treat
+                                        # as "auto-allow" so headless callers (tests, scripted
+                                        # AudioLoop usage) don't crash with NameError.
+                                        print(
+                                            f"[Sierra DEBUG] [TOOL] No on_tool_confirmation "
+                                            f"callback configured; auto-allowing '{fc.name}'."
                                         )
-                                        function_responses.append(function_response)
-                                        continue
-
-                                    if not confirmed:
-                                        print(f"[Sierra DEBUG] [DENY] Tool call '{fc.name}' denied by user.")
-                                        function_response = types.FunctionResponse(
-                                            id=fc.id,
-                                            name=fc.name,
-                                            response={
-                                                "result": "User denied the request to use this tool.",
-                                            }
-                                        )
-                                        function_responses.append(function_response)
-                                        continue
 
                                 # If confirmed (or no callback configured, or auto-allowed), proceed
                                 if fc.name == "generate_cad":
