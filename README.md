@@ -413,7 +413,7 @@ npm run dev
 2. The most common cause is a **deprecated Gemini model**. Google rotates preview models every few months.
    - Open your `.env` file and add or update `GEMINI_MODEL` with a current model name:
      ```
-     GEMINI_MODEL=models/gemini-2.5-flash-preview-native-audio
+     GEMINI_MODEL=models/gemini-2.5-flash-native-audio-latest
      ```
    - Check [Google's model list](https://ai.google.dev/gemini-api/docs/models) for the latest native-audio model.
 3. Verify your API key is still valid at [Google AI Studio](https://aistudio.google.com/app/apikey).

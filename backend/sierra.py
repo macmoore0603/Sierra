@@ -30,12 +30,11 @@ SEND_SAMPLE_RATE = 16000
 RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE = 1024
 
-# The preview model may be rotated by Google; update this value if
-# voice stops connecting.  Check available models at:
-#   https://ai.google.dev/gemini-api/docs/models
+# Use the "-latest" alias so we track model rotations automatically.
+# Override via GEMINI_MODEL in .env if needed.
 MODEL = os.getenv(
     "GEMINI_MODEL",
-    "models/gemini-2.5-flash-preview-native-audio",
+    "models/gemini-2.5-flash-native-audio-latest",
 )
 DEFAULT_MODE = "camera"
 
