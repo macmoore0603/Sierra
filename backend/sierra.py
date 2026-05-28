@@ -40,17 +40,27 @@ MODEL = os.getenv(
 DEFAULT_MODE = "camera"
 
 
+class EnvironmentError(Exception):
+    """Raised when .env or GEMINI_API_KEY is missing / invalid."""
+
+
 def _validate_environment():
     """Check that the .env file exists and contains a usable GEMINI_API_KEY.
 
-    Returns the API key string on success; raises SystemExit with a
-    developer-friendly message on failure so problems surface immediately
-    instead of producing a cryptic 401 later.
+    Returns the API key string on success.  On failure it prints an
+    actionable message **and** raises `EnvironmentError` so the caller
+    can decide how to handle it (the server stays alive and can report
+    the problem to the frontend instead of crashing silently).
     """
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, ".env")
     env_path = os.path.normpath(env_path)
 
     if not os.path.isfile(env_path):
+        msg = (
+            f".env file not found at {env_path}. "
+            "Run: cp .env.example .env  then add your Gemini API key. "
+            "Get a free key at https://aistudio.google.com/app/apikey"
+        )
         print(
             "\n"
             "========================================================\n"
@@ -66,12 +76,17 @@ def _validate_environment():
             "   https://aistudio.google.com/app/apikey\n"
             "========================================================\n"
         )
-        raise SystemExit(1)
+        raise EnvironmentError(msg)
 
     load_dotenv(dotenv_path=env_path)
     api_key = os.getenv("GEMINI_API_KEY")
 
     if not api_key or api_key.strip() in ("", "your_api_key_here", "your_key_here"):
+        msg = (
+            "GEMINI_API_KEY is missing or still set to the placeholder. "
+            "Open .env and replace the placeholder with your real key. "
+            "Get a free key at https://aistudio.google.com/app/apikey"
+        )
         print(
             "\n"
             "========================================================\n"
@@ -88,15 +103,25 @@ def _validate_environment():
             "   https://aistudio.google.com/app/apikey\n"
             "========================================================\n"
         )
-        raise SystemExit(1)
+        raise EnvironmentError(msg)
 
     return api_key
 
 
-_gemini_api_key = _validate_environment()
-client = genai.Client(
-    http_options={"api_version": "v1beta"},
-    api_key=_gemini_api_key,
+# Validate at import time but allow the server to keep running so it can
+# report the error to the frontend instead of crashing before it starts.
+try:
+    _gemini_api_key = _validate_environment()
+except EnvironmentError:
+    _gemini_api_key = None
+
+client = (
+    genai.Client(
+        http_options={"api_version": "v1beta"},
+        api_key=_gemini_api_key,
+    )
+    if _gemini_api_key
+    else None
 )
 
 # Function definitions
@@ -1228,6 +1253,17 @@ class AudioLoop:
          pass
 
     async def run(self, start_message=None):
+        if client is None:
+            msg = (
+                "Cannot start voice — Gemini API client is not configured. "
+                "Create a .env file with your GEMINI_API_KEY. "
+                "Get a free key at https://aistudio.google.com/app/apikey"
+            )
+            print(f"[Sierra DEBUG] [FATAL] {msg}")
+            if self.on_error:
+                self.on_error(msg)
+            return
+
         retry_delay = 1
         is_reconnect = False
         max_retries = 5

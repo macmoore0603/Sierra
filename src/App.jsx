@@ -339,6 +339,10 @@ function App() {
                 setStatus('Model Connected');
             } else if (data.msg === 'Sierra Stopped') {
                 setStatus('Connected');
+                // Reset power state so the button shows OFF and the user
+                // can click it to retry instead of staring at silence.
+                setIsConnected(false);
+                hasAutoConnectedRef.current = false;
             }
         });
         socket.on('audio_data', (data) => {
