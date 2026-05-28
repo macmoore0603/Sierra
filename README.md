@@ -124,7 +124,8 @@ playwright install chromium
 npm install
 
 # 4. Create .env file
-echo "GEMINI_API_KEY=your_key_here" > .env
+cp .env.example .env
+# Edit .env and replace your_api_key_here with your real Gemini key
 
 # 5. Run!
 conda activate sierra && npm run dev
@@ -258,14 +259,61 @@ Sierra uses Google's Gemini API for voice and intelligence. You need a free API 
 1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey).
 2. Sign in with your Google account.
 3. Click **"Create API Key"** and copy the generated key.
-4. Create a file named `.env` in the `sierra` folder (same level as `README.md`).
-5. Add this line to the file:
+4. Copy the example environment file to create your own `.env`:
+   ```bash
+   cp .env.example .env
    ```
-   GEMINI_API_KEY=your_api_key_here
+5. Open `.env` in your editor and replace `your_api_key_here` with the key you copied:
    ```
-6. Replace `your_api_key_here` with the key you copied.
+   GEMINI_API_KEY=AIzaSy...
+   ```
+6. Save the file.
 
-> **Note**: Keep this key private! Never commit your `.env` file to Git.
+> **Note**: Keep this key private! The `.env` file is already listed in `.gitignore` and will never be committed to Git.
+
+---
+
+### 7. 🎙️ Voice Dependencies Setup
+
+Sierra's real-time voice features rely on **PyAudio** and a working microphone. Follow the steps below for your platform.
+
+#### macOS
+
+1. **Install PortAudio** (required by PyAudio):
+   ```bash
+   brew install portaudio
+   ```
+   > If you don't have Homebrew, install it first: https://brew.sh
+
+2. **Grant Microphone Permission**:
+   - Open **System Settings → Privacy & Security → Microphone**.
+   - Enable access for your terminal app (Terminal, iTerm2, VS Code, etc.).
+   - If you are running Sierra via Electron, you may also need to allow the Electron app itself.
+   - **Restart your terminal** after granting permission.
+
+3. **Verify PyAudio installation**:
+   ```bash
+   conda activate sierra
+   python -c "import pyaudio; print('PyAudio OK')"
+   ```
+
+#### Windows
+
+- No extra system dependencies are required — `pip install pyaudio` handles everything.
+- When Sierra starts, Windows will prompt for microphone access. Click **Allow**.
+
+#### Linux
+
+```bash
+sudo apt-get install -y portaudio19-dev python3-pyaudio
+```
+
+#### `.env` file checklist
+
+Before starting Sierra, make sure:
+- [ ] `.env` file exists in the project root (same directory as `README.md`).
+- [ ] `GEMINI_API_KEY` is set to a valid key (not the placeholder).
+- [ ] No extra spaces or quotes around the key value.
 
 ---
 

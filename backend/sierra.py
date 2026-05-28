@@ -33,8 +33,65 @@ CHUNK_SIZE = 1024
 MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
 DEFAULT_MODE = "camera"
 
-load_dotenv()
-client = genai.Client(http_options={"api_version": "v1beta"}, api_key=os.getenv("GEMINI_API_KEY"))
+
+def _validate_environment():
+    """Check that the .env file exists and contains a usable GEMINI_API_KEY.
+
+    Returns the API key string on success; raises SystemExit with a
+    developer-friendly message on failure so problems surface immediately
+    instead of producing a cryptic 401 later.
+    """
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, ".env")
+    env_path = os.path.normpath(env_path)
+
+    if not os.path.isfile(env_path):
+        print(
+            "\n"
+            "========================================================\n"
+            " ERROR: .env file not found!\n"
+            "========================================================\n"
+            f" Expected location: {env_path}\n"
+            "\n"
+            " Quick fix:\n"
+            "   cp .env.example .env\n"
+            "   # then open .env and paste your Gemini API key.\n"
+            "\n"
+            " Get a free key at:\n"
+            "   https://aistudio.google.com/app/apikey\n"
+            "========================================================\n"
+        )
+        raise SystemExit(1)
+
+    load_dotenv(dotenv_path=env_path)
+    api_key = os.getenv("GEMINI_API_KEY")
+
+    if not api_key or api_key.strip() in ("", "your_api_key_here", "your_key_here"):
+        print(
+            "\n"
+            "========================================================\n"
+            " ERROR: GEMINI_API_KEY is missing or still set to the\n"
+            "        placeholder value.\n"
+            "========================================================\n"
+            f" .env location: {env_path}\n"
+            "\n"
+            " Open your .env file and replace the placeholder with\n"
+            " your real key:\n"
+            "   GEMINI_API_KEY=AIzaSy...\n"
+            "\n"
+            " Get a free key at:\n"
+            "   https://aistudio.google.com/app/apikey\n"
+            "========================================================\n"
+        )
+        raise SystemExit(1)
+
+    return api_key
+
+
+_gemini_api_key = _validate_environment()
+client = genai.Client(
+    http_options={"api_version": "v1beta"},
+    api_key=_gemini_api_key,
+)
 
 # Function definitions
 generate_cad = {
@@ -1241,8 +1298,31 @@ class AudioLoop:
                 
             except Exception as e:
                 # This catches the ExceptionGroup from TaskGroup or direct exceptions
+                error_str = str(e).lower()
                 print(f"[Sierra DEBUG] [ERR] Connection Error: {e}")
-                
+
+                # Detect authentication / API-key errors and surface a clear message
+                if "api key" in error_str or "401" in error_str or "permission" in error_str or "invalid" in error_str:
+                    print(
+                        "\n"
+                        "========================================================\n"
+                        " ERROR: Gemini API rejected your key.\n"
+                        "========================================================\n"
+                        " Possible causes:\n"
+                        "   - The key in .env is incorrect or expired.\n"
+                        "   - The key does not have access to the model.\n"
+                        "\n"
+                        " Verify your key at:\n"
+                        "   https://aistudio.google.com/app/apikey\n"
+                        "========================================================\n"
+                    )
+                    if self.on_error:
+                        self.on_error(
+                            "Gemini API key error — check your .env file. "
+                            "Get a valid key at https://aistudio.google.com/app/apikey"
+                        )
+                    break
+
                 if self.stop_event.is_set():
                     break
                 
