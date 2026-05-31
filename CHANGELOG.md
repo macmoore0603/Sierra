@@ -8,27 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-05-31
 
 ### Added
-- **Project Vision section** in README: Explicit commitment to building the most powerful personal AI agent with deep ecosystem integrations, self-improvement, advanced memory/RAG, multi-agent orchestration (LangGraph/CrewAI), and robust safety/confirmation mechanisms.
-- **Recent Improvements** highlight in README.
-- Expanded capabilities table and architecture diagram to reflect safety, future multi-agent (`agents/`), and personal integrations direction.
-- Comprehensive `CHANGELOG.md` to track iterative progress.
-- Enhanced `.env.example` with clear sections for upcoming Google Calendar, Gmail, GitHub, and other personal integrations.
-- Major upgrade to `backend/tools.py`: reorganized into clear categories, added detailed docstrings/comments, expanded tool surface area with placeholders for personal tools, memory, and safety-aware design. Better prepared for Gemini function calling + on-device router.
+- Foundational **Memory/RAG module** (`backend/memory.py`): Persistent semantic memory using ChromaDB + sentence-transformers (with graceful fallback). Supports add/query/get_relevant_context + basic self-reflection hook. Enables continuity, proactive behavior, and self-improvement.
+- **Multi-Agent Orchestrator** foundation (`backend/agents/orchestrator.py` + `__init__.py`): Smart task router + safety-aware execution wrapper. Ready to evolve into full LangGraph/CrewAI orchestration. Detects intents for personal integrations, memory, CAD, etc.
+- Updated CHANGELOG with progress toward the ultimate personal AI vision.
 
 ### Changed
-- README.md polished for clarity, flow, and alignment with long-term goals (voice-first, privacy-focused, proactive, safe).
-- Project structure documentation updated to include `backend/agents/`.
+- Strengthened architecture for future deep personal ecosystem integrations and multi-agent workflows while preserving existing robustness and confirmation system.
 
 ### Philosophy
-This release continues the iterative "make Sierra better" development style. Every change brings us closer to a persistent, self-improving, deeply integrated personal AI that feels magical while staying private and safe.
+Continuing aggressive iterative development. Memory + multi-agent foundation now in place. Next focus areas: actual integration of memory into AudioLoop/sierra.py, real personal tool implementations (Calendar/Gmail), and proactive agent behaviors.
 
-## [0.1.0] - Initial Sierra-Ada v2 base
-
-- Forked/extended from A.D.A V2 + A.D.A Local FunctionGemma router.
-- Core features: Gemini 2.5 Native Audio voice, on-device intent router, parametric CAD (build123d), 3D printing integration, gesture control (MediaPipe), face authentication, web agent (Playwright), Kasa smart home, basic project memory.
-- Electron + React frontend with Minority Report-style UI.
-- Safety: tool permission system in settings.json.
+## Previous (see git history)
+- Major tools.py expansion, .env.example enhancements, Vision section, and initial CHANGELOG (commit c56b84b).
 
 ---
 
-> **Note**: Sierra is under active development. Check Git history and `devin/*` branches for the latest experimental work.
+> **Note**: Sierra is under active development. The goal remains: the most powerful, capable, persistent, self-improving, voice-first, privacy-focused personal AI agent with deep, safe personal integrations.

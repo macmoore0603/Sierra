@@ -1,4 +1,17 @@
-# Sierra A.V.E.N.G.E.R.S Multi-Agent System
-# Backend agents package
+"""
+Sierra Agents Package
 
-from .avengers_roster import create_sierra_avengers_crew, create_all_agents
+Foundation for multi-agent orchestration.
+
+Future goals:
+- Use LangGraph or CrewAI for complex workflows
+- Specialized agents: CAD Agent, Web Agent, Memory Agent, Personal Integration Agent, Proactive Agent
+- Coordinated planning + execution with safety gates
+- Self-improvement through agent feedback loops
+
+This package will become the brain for advanced, persistent, proactive behavior.
+"""
+
+from .orchestrator import AgentOrchestrator
+
+__all__ = ["AgentOrchestrator"]
