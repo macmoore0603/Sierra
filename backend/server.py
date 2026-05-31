@@ -24,6 +24,7 @@ if sys.platform == 'win32':
 import socketio
 import uvicorn
 from fastapi import FastAPI
+from pydantic import BaseModel
 import asyncio
 import threading
 import sys
@@ -152,6 +153,47 @@ async def startup_event():
 @app.get("/status")
 async def status():
     return {"status": "running", "service": "Sierra Backend"}
+
+
+# --- Text chat endpoint (used by the native macOS app) ---
+# The real-time voice pipeline runs over Socket.IO (start_audio -> transcription /
+# audio_data events). This REST route gives non-streaming clients (e.g. the native
+# macOS app's "Hey Sierra" text turns) a fast request/response round-trip so they
+# get a real answer instead of a connection error. Always returns {"response": str}.
+
+SIERRA_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
+SIERRA_SYSTEM_PROMPT = (
+    "You are Sierra, a proactive, concise, voice-first personal AI assistant. "
+    "Answer in 1-3 short sentences suitable to be spoken aloud."
+)
+
+
+class ChatRequest(BaseModel):
+    message: str = ""
+
+
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    message = (req.message or "").strip()
+    if not message:
+        return {"response": "I didn't catch that. Say it again?"}
+
+    if sierra.client is None:
+        return {"response": "Sierra's brain is offline: GEMINI_API_KEY is not set on the backend."}
+
+    try:
+        result = await sierra.client.aio.models.generate_content(
+            model=SIERRA_TEXT_MODEL,
+            contents=message,
+            config=sierra.types.GenerateContentConfig(
+                system_instruction=SIERRA_SYSTEM_PROMPT,
+            ),
+        )
+        text = (getattr(result, "text", None) or "").strip()
+        return {"response": text or "..."}
+    except Exception as e:
+        print(f"[SERVER] /chat error: {e}")
+        return {"response": f"Sierra hit an error: {e}"}
 
 @sio.event
 async def connect(sid, environ):
