@@ -23,22 +23,31 @@ Sierra is built on the open-source [A.D.A V2](https://github.com/nazirlouis/ada_
 - **One canonical app only**: Always launch from the installed production build. Build artifacts are never launched directly.
 - **Aggressive permission activation**: One big "ACTIVATE ALL PERMISSIONS" button + dedicated macOS privacy script that opens every relevant TCC pane (Camera for gestures, Accessibility, Automation, Full Disk, Screen Recording, Microphone, etc.) and tells you the exact paths to add.
 
+### Concrete Reference Implementation Now Available
+
+**`docs/god-mode/`** contains production-ready React components and hooks you can drop straight into the current Electron UI:
+
+- `useGodModeAutoForce.js` — auto-starts gestures (MediaPipe hand tracking), face auth, voice wake, and presence on launch. Forces "GOD" / "LIVE" states forever in God Mode. No more "off" UI paths.
+- `GodModeStatusPills.jsx` — persistent gold DAEMON:GOD (tappable), HEY SIERRA:LIVE, GESTURES:GOD, PRESENCE:PRESENT + GOD badge. Solves the "DAEMON says offline" and "gestures are off" problems at the visual layer.
+- `GodModePermissionsButton.jsx` — the giant gold one-button activation flow with exact drag-in paths and script launcher. Paste into SettingsWindow.jsx.
+- `GodModeHUDExample.jsx` — wires everything into the top chrome so the whole app feels full power.
+
+See [GOD_MODE.md](./GOD_MODE.md) for the complete philosophy + integration steps, and open issues #6–#15 for the detailed acceptance criteria that drove this work.
+
 ### How to Activate Full God Mode Permissions (macOS)
 
 1. In the app, go to Settings → macOS Privacy & Security.
 2. Click the big gold button:
    > **🔓 ACTIVATE ALL PERMISSIONS NOW (God Mode)**
-3. Drag these two paths into the open panes (especially **Camera**):
-   - The installed Sierra app
-   - The backend Python process
-4. Run the privacy activation script for best results:
+3. Drag these two paths into the open panes (especially **Camera** for gestures):
+   - The installed Sierra app → `/Applications/Sierra.app`
+   - The backend Python process (your venv python or the one running `backend/server.py`)
+4. Run the helper for best results:
    ```bash
-   # (path will be documented once the script is added to this repo)
+   bash scripts/macos-activate-permissions.sh
    ```
 
-After this, Sierra runs with true "everything unlocked" behavior.
-
-See the upcoming `GOD_MODE.md` for the full philosophy and implementation details from the development sessions.
+After this, Sierra runs with true "everything unlocked" behavior. The auto-force logic + status pills make voice, gestures, and face auth report as LIVE/GOD immediately (with graceful guidance to the button if OS grants are still pending).
 
 ---
 
@@ -69,6 +78,7 @@ See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for a detailed overview and [`ROADMAP
 - Extensible personal integrations (Calendar + GitHub examples)
 - Clear architecture documentation
 - **Pervasive God Mode foundation** (auto-activation, no "off" states, full access philosophy)
+- **Reference React components** in `docs/god-mode/` for immediate implementation in the Electron UI
 
 The project is under active iterative development. Check recent commits for the latest progress.
 
@@ -100,7 +110,7 @@ cp .env.example .env
 conda activate sierra && npm run dev
 ```
 
-**Note**: After setup, run the (upcoming) God Mode permission activation flow for full system/gesture/camera access.
+**Note**: After setup, run the God Mode permission activation flow (`scripts/macos-activate-permissions.sh` + big button in Settings) for full system/gesture/camera access. The auto-force logic will then keep everything powered on.
 
 </details>
 
