@@ -5,10 +5,25 @@ import os
 import sys
 import traceback
 from dotenv import load_dotenv
-import cv2
-import pyaudio
-import PIL.Image
-import mss
+
+# Heavy multimodal dependencies are optional: they require system libraries and
+# are only needed for the live camera/audio loop, not for importing tool schemas.
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+try:
+    import pyaudio
+except ImportError:
+    pyaudio = None
+try:
+    import PIL.Image
+except ImportError:
+    PIL = None
+try:
+    import mss
+except ImportError:
+    mss = None
 import argparse
 import math
 import struct
@@ -24,7 +39,7 @@ if sys.version_info < (3, 11, 0):
 
 from tools import tools_list
 
-FORMAT = pyaudio.paInt16
+FORMAT = pyaudio.paInt16 if pyaudio else None
 CHANNELS = 1
 SEND_SAMPLE_RATE = 16000
 RECEIVE_SAMPLE_RATE = 24000
@@ -202,7 +217,7 @@ config = types.LiveConnectConfig(
     )
 )
 
-pya = pyaudio.PyAudio()
+pya = pyaudio.PyAudio() if pyaudio else None
 
 from cad_agent import CadAgent
 from web_agent import WebAgent

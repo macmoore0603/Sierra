@@ -17,7 +17,17 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 
 import aiohttp
-from zeroconf import Zeroconf, ServiceBrowser, ServiceListener
+
+# zeroconf powers mDNS printer discovery; it is optional so the module can be
+# imported (e.g. for tool schemas) without the dependency installed.
+try:
+    from zeroconf import Zeroconf, ServiceBrowser, ServiceListener
+except ImportError:
+    Zeroconf = None
+    ServiceBrowser = None
+
+    class ServiceListener:  # fallback base so the listener class can be defined
+        pass
 
 
 class PrinterType(Enum):
@@ -355,7 +365,13 @@ class PrinterAgent:
         Returns list of discovered printers.
         """
         print(f"[PRINTER] Starting printer discovery (timeout: {timeout}s)...")
-        
+
+        if Zeroconf is None:
+            raise RuntimeError(
+                "Printer discovery requires the 'zeroconf' package. "
+                "Install it with `pip install zeroconf`."
+            )
+
         self._zeroconf = Zeroconf()
         listener = PrinterDiscoveryListener()
         

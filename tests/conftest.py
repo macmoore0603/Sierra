@@ -11,6 +11,13 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
+# Provide a dummy API key so agents that build a genai.Client at construction
+# time (CadAgent, WebAgent, ...) can be instantiated in unit tests without real
+# credentials. `setdefault` preserves a real GEMINI_API_KEY when one is present.
+# Tests that exercise the live API wrap their calls in try/except and tolerate
+# failures, so the dummy key lets them run harmlessly instead of erroring.
+os.environ.setdefault("GEMINI_API_KEY", "test-dummy-key")
+
 # Settings file path
 SETTINGS_FILE = BACKEND_DIR / "settings.json"
 
