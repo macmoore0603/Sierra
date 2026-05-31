@@ -42,10 +42,9 @@ This button:
 
 ### Helper Script
 
-A dedicated privacy activation script (to be added or referenced here) that:
-- Resets relevant TCC entries.
-- Aggressively triggers permission requests.
+A dedicated privacy activation script lives at `scripts/macos-activate-permissions.sh`. It:
 - Opens every relevant Privacy & Security pane.
+- Gives clear drag-in instructions.
 
 Run it for a clean start on permissions.
 
@@ -64,11 +63,33 @@ Run it for a clean start on permissions.
 - Titlebar / HUD elements use "GOD" branding instead of "offline" or "connecting" when full access is enabled.
 - All God Mode changes are permanent for this local/personal build — no toggles back to restricted mode.
 
+## Reference React/Electron Implementation (Issues #6–#15)
+
+**Concrete, ready-to-integrate code now lives in `docs/god-mode/`**.
+
+These files turn the philosophy into actual components and hooks for the current Electron + React frontend (src/App.jsx + components/):
+
+- `docs/god-mode/useGodModeAutoForce.js` — The core hook. Call once in App.jsx. Forces gestures (hand tracking), face auth, video/presence, and voice wake to powered-on states on mount and every reconnect. Never lets UI show "off". Directly solves the "gestures are off", "wake is off", "camera says off" reports.
+- `docs/god-mode/GodModeStatusPills.jsx` — Four always-gold pills: DAEMON:GOD (tappable), HEY SIERRA:LIVE, GESTURES:GOD, PRESENCE:PRESENT + GOD MODE badge. Drop near TopAudioBar or as persistent HUD. No "off" rendering path exists in God Mode.
+- `docs/god-mode/GodModePermissionsButton.jsx` — The giant gold "🔓 ACTIVATE ALL PERMISSIONS NOW (God Mode)" button + exact path instructions + script reference. Paste into SettingsWindow.jsx Privacy section.
+- `docs/god-mode/GodModeHUDExample.jsx` — Shows how to wire the pills into the existing modular chrome (title bar + bottom indicators) so the whole app feels like full power.
+- `docs/god-mode/README.md` — Integration guide + theme rules (black + metallic gold, no blue success states).
+
+### Quick Integration Steps
+1. Copy the hook and components into src/ (create hooks/ if desired).
+2. Add the hook call near the top of App.jsx useEffects.
+3. Replace any old toggle buttons or status text for gestures/voice with the new pills or forceGodModeFeature() redirect.
+4. Drop the PermissionsButton into SettingsWindow.jsx.
+5. Rebuild / restart — in God Mode the UI now lies to the user in the best way: everything looks and behaves LIVE from second one.
+
+See the individual files for copy-paste snippets and comments linking back to the exact user quotes that drove them ("i want everything in sierra to have god mode", "never show off", "DAEMON is off", etc.).
+
 ## Related Documents
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — God Mode philosophy section
 - [ROADMAP.md](./ROADMAP.md) — Pervasive God Mode as top priority
-- macOS privacy activation script (to be added)
+- `scripts/macos-activate-permissions.sh` — One-command pane opener + instructions
+- Open issues #6–#15 on GitHub (implementation tracking)
 
 ---
 
