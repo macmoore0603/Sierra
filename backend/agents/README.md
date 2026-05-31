@@ -4,74 +4,49 @@
 
 Inspired by the J.A.R.V.I.S Day 22 build (LaRossa AI / @larossa_tech).
 
-## Overview
+## What's New (Latest Push)
 
-This module adds a powerful, specialized multi-agent system to Sierra. Each agent has:
+- Full 15-agent roster with dedicated memory & voice personas
+- `sierra_integration.py` — Easy drop-in class to wire Director + full roster into your existing `backend/sierra.py` or `server.py`
+- `dashboard.py` — Beautiful Streamlit visual roster + chat interface with Director
+- Enhanced LangGraph orchestrator with routing + safety gates
+- Tools with Sentinel confirmation wrappers
+- Per-agent voice/persona system ready to plug into your existing voice pipeline
 
-- A clear role and backstory
-- Dedicated long-term + short-term memory
-- Voice/persona support (via Echo)
-- Safety guardrails through Sentinel
+## Quick Integration into Existing Sierra
 
-The system evolves Sierra from a single assistant into a true personal AI operating system.
-
-## Agents (15 total)
-
-| Agent       | Role                          | Key Focus                          |
-|-------------|-------------------------------|------------------------------------|
-| Director    | Central orchestrator         | Coordination, safety, user interface |
-| Scout       | Research & Intelligence      | Deep research, monitoring          |
-| Forge       | Code & Engineering           | Sierra development, GitHub         |
-| Chronos     | Calendar & Time              | Scheduling, reminders              |
-| Courier     | Email & Communications       | Gmail, drafting, prioritization    |
-| Weaver      | Memory & Knowledge           | RAG, long-term memory              |
-| Echo        | Voice & Persona              | STT/TTS, interruptions, personas   |
-| Sentinel    | Security & Privacy           | Confirmations, guardrails          |
-| Operator    | Daily Operations             | Workflows, proactive tasks         |
-| Maestro     | Meetings                     | Prep, notes, follow-ups            |
-| Creator     | Content & Documentation      | Writing, reports, Sierra docs      |
-| Evolver     | Self-Improvement             | Architecture upgrades, code review |
-| Guardian    | Local & Device               | Files, on-device privacy           |
-| Analyst     | Personal Intelligence        | Custom briefings (Duluth context)  |
-| Toolsmith   | Tools & Integrations         | New capabilities                   |
-
-## Quick Start
+In your `backend/sierra.py` or main handler:
 
 ```python
-from backend.agents.avengers_roster import create_sierra_avengers_crew, create_all_agents
+from backend.agents.sierra_integration import get_avengers_system
 
-# Assume you have your LLM ready (e.g. from existing Sierra setup)
-llm = ...  # your ChatGroq / Gemini / etc.
+# Initialize once (e.g. in Sierra class __init__)
+avengers = get_avengers_system(your_llm)
 
-crew, agents = create_sierra_avengers_crew(llm)
+# For simple queries -> Director
+response = avengers.chat_with_director(user_message)
 
-# Example task delegation
-result = crew.kickoff([{"description": "Research the latest in personal AI agents and summarize key trends."}])
-print(result)
+# For complex / multi-step tasks
+result = avengers.handle_complex_task("Research X and then create a plan in calendar and draft an email")
 ```
 
-## LangGraph Orchestration
+You can also route only certain intents (from your sierra_router.py) to the A.V.E.N.G.E.R.S system.
 
-See `langgraph_orchestrator.py` for a stateful supervisor that can route tasks intelligently and integrate human-in-the-loop confirmations.
+## Running the Dashboard
 
-## Tools
+```bash
+streamlit run backend/agents/dashboard.py
+```
 
-See `tools.py` for ready-to-use (and gated) tools for Calendar, Gmail, GitHub, local files, web search, etc.
+See the visual roster, chat with Director, and test LangGraph delegation.
 
-All modifying actions are wrapped with Sentinel confirmation hooks.
+## Architecture
 
-## Voice
+- **CrewAI** for easy role-based agents with memory
+- **LangGraph** for advanced stateful orchestration and human-in-the-loop
+- **Sentinel** enforces safety on all modifying actions
+- **Echo** + VoiceManager for per-agent voices
 
-`voice.py` provides per-agent personas and a VoiceManager you can plug into Sierra's existing voice pipeline.
+This turns Sierra into a true multi-agent personal operating system while keeping your voice-first and privacy priorities intact.
 
-## Next Steps / Integration
-
-1. Wire the Director into your main conversation loop in `backend/sierra.py` or `server.py`.
-2. Connect real Google/Gmail/GitHub credentials securely.
-3. Add more tools via Toolsmith.
-4. Build a visual roster dashboard (React component or Streamlit).
-5. Expand with more agents as needed.
-
-This brings Sierra significantly closer to the "AI OS" vision while staying true to voice-first, privacy, and self-improvement principles.
-
-Built for you, Mac. Let's keep making Sierra unstoppable.
+Pull the latest changes and let's keep iterating!
