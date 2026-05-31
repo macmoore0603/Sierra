@@ -38,10 +38,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 self.scheduleDailyBriefing()
             }
         }
+
+        // Make sure the HUD comes to the front on launch — on the user's CURRENT
+        // Space — instead of opening behind other windows or on another desktop.
+        NSApp.setActivationPolicy(.regular)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.bringToFront() }
+    }
+
+    func bringToFront() {
+        NSApp.activate(ignoringOtherApps: true)
+        for w in NSApp.windows where w.canBecomeMain {
+            w.collectionBehavior.insert(.moveToActiveSpace)
+            w.center()
+            w.makeKeyAndOrderFront(nil)
+            w.orderFrontRegardless()
+        }
     }
 
     @objc func toggleWindow() {
-        NSApp.activate(ignoringOtherApps: true)
+        bringToFront()
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
