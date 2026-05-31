@@ -5,8 +5,12 @@ import pytest
 import os
 import numpy as np
 
-# Try to import the authenticator, skip all tests if dependencies missing
+# Skip all tests if the (optional) face-auth dependencies aren't installed.
+# `authenticator` now imports without mediapipe/opencv, so check the heavy deps
+# explicitly rather than relying on the import failing.
 try:
+    import mediapipe  # noqa: F401
+    import cv2  # noqa: F401
     from authenticator import FaceAuthenticator
     HAS_AUTH = True
 except ImportError as e:

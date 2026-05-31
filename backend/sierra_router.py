@@ -605,6 +605,16 @@ class GroqRouter:
             timeout=30,
         )
         latency_ms = (time.time() - t0) * 1000.0
+
+        # Llama models on Groq occasionally emit a tool call in a format their
+        # server-side parser rejects (HTTP 400 `tool_use_failed`). The intended
+        # call is returned in `failed_generation`, so recover it instead of
+        # failing the whole route.
+        if resp.status_code == 400:
+            recovered = self._recover_failed_generation(resp, user_text, latency_ms)
+            if recovered is not None:
+                return recovered
+
         resp.raise_for_status()
 
         message = resp.json()["choices"][0]["message"]
@@ -640,6 +650,48 @@ class GroqRouter:
             confidence=confidence,
             latency_ms=latency_ms,
             raw_response=raw,
+            engine=self.engine,
+        )
+
+    def _recover_failed_generation(
+        self, resp, user_text: str, latency_ms: float
+    ) -> Optional[RouteResult]:
+        """Recover a tool call from Groq's ``tool_use_failed`` (400) payload.
+
+        The malformed generation looks like
+        ``<function=web_search{"query": "..."}</function>``; parse the function
+        name + JSON args out of it. Returns ``None`` if this isn't a
+        recoverable ``tool_use_failed`` error.
+        """
+        try:
+            error = resp.json().get("error", {})
+        except ValueError:
+            return None
+        if error.get("code") != "tool_use_failed":
+            return None
+
+        generated = error.get("failed_generation", "") or ""
+        match = re.search(r"<function=(\w+)\s*(\{.*\})", generated, re.S)
+        if not match:
+            return None
+
+        name = match.group(1)
+        try:
+            args = json.loads(match.group(2))
+        except json.JSONDecodeError:
+            args = {}
+        if name not in VALID_FUNCTION_NAMES:
+            name, args = "chat", {"prompt": user_text}
+        if not isinstance(args, dict) or not args:
+            args = SierraRouter._default_args(name, user_text)
+
+        confidence = 0.85 if name != "chat" else 0.5
+        return RouteResult(
+            function=name,
+            arguments=args,
+            confidence=confidence,
+            latency_ms=latency_ms,
+            raw_response=generated,
             engine=self.engine,
         )
 

@@ -1,12 +1,27 @@
-import mediapipe as mp
-from mediapipe.tasks import python as mp_python
-from mediapipe.tasks.python import vision
-import cv2
 import asyncio
 import os
 import base64
-import numpy as np
 import urllib.request
+
+# Face authentication relies on MediaPipe + OpenCV, which need system libraries.
+# They are optional so the module can be imported (e.g. by the server) without
+# them; FaceAuthenticator raises a clear error if constructed without them.
+try:
+    import mediapipe as mp
+    from mediapipe.tasks import python as mp_python
+    from mediapipe.tasks.python import vision
+except ImportError:
+    mp = None
+    mp_python = None
+    vision = None
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 class FaceAuthenticator:
     # MediaPipe Face Landmarker model URL
@@ -27,6 +42,12 @@ class FaceAuthenticator:
         self.running = False
         self.reference_landmarks = None
         self.landmarker = None
+
+        if mp is None or cv2 is None or np is None:
+            raise RuntimeError(
+                "Face authentication requires mediapipe, opencv-python and numpy. "
+                "Install them with `pip install mediapipe opencv-python numpy`."
+            )
 
         self._ensure_model()
         self._init_landmarker()

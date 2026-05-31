@@ -203,11 +203,13 @@ class TestRouterSingletonSafety:
 
 
 class _FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload, status_code=200):
         self._payload = payload
+        self.status_code = status_code
 
     def raise_for_status(self):
-        return None
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
 
     def json(self):
         return self._payload
@@ -216,12 +218,15 @@ class _FakeResponse:
 class _FakeRequests:
     """Minimal stand-in for the ``requests`` module used by GroqRouter."""
 
-    def __init__(self, message):
+    def __init__(self, message=None, response=None):
         self._message = message
+        self._response = response
         self.last_payload = None
 
     def post(self, url, headers=None, json=None, timeout=None):
         self.last_payload = json
+        if self._response is not None:
+            return self._response
         return _FakeResponse({"choices": [{"message": self._message}]})
 
 
@@ -271,6 +276,29 @@ class TestGroqRouter:
 
         result = router.route("do something weird")
         assert result.function == "chat"
+
+    def test_recovers_from_tool_use_failed(self, monkeypatch):
+        """Groq sometimes returns a 400 with the intended call in
+        `failed_generation`; the router should recover it, not crash."""
+        router = sierra_router.GroqRouter(api_key="test-key")
+        failed = _FakeResponse(
+            {
+                "error": {
+                    "code": "tool_use_failed",
+                    "failed_generation": (
+                        '<function=web_search{"query": "weather in Boston"}'
+                        "</function>"
+                    ),
+                }
+            },
+            status_code=400,
+        )
+        router._requests = _FakeRequests(response=failed)
+
+        result = router.route("what's the weather in Boston?")
+        assert result.function == "web_search"
+        assert result.arguments == {"query": "weather in Boston"}
+        assert result.engine == "groq"
 
     def test_engine_override_selects_groq(self, monkeypatch):
         monkeypatch.setattr(sierra_router, "_router_singleton", None)
