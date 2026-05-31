@@ -304,14 +304,9 @@ struct ContentView: View {
                         .shadow(color: .yellow, radius: 40)
                 }
                 .padding(.top, 30)
+                .onAppear { animateReactor(listening: vm.isListening) }
                 .onChange(of: vm.isListening) { _, newValue in
-                    withAnimation(.easeInOut(duration: 0.3).repeatForever(autoreverses: true)) {
-                        reactorScale = newValue ? 1.32 : 1.0
-                        reactorGlow = newValue ? 1.0 : 0.7
-                    }
-                    withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
-                        reactorRotation = newValue ? 360 : 0
-                    }
+                    animateReactor(listening: newValue)
                 }
 
                 ScrollViewReader { proxy in
@@ -386,6 +381,22 @@ struct ContentView: View {
         let text = inputText
         inputText = ""
         vm.send(text)
+    }
+
+    /// Keep the arc reactor visibly alive at all times — a slow idle spin and
+    /// gentle breathing glow — then intensify (faster, brighter, larger) while
+    /// Sierra is actively listening.
+    private func animateReactor(listening: Bool) {
+        withAnimation(.easeInOut(duration: listening ? 0.35 : 1.8).repeatForever(autoreverses: true)) {
+            reactorScale = listening ? 1.32 : 1.08
+            reactorGlow = listening ? 1.0 : 0.85
+        }
+        // Reset to 0 without animation, then drive a continuous forward spin so
+        // changing speed never makes the ring jump backwards.
+        reactorRotation = 0
+        withAnimation(.linear(duration: listening ? 1.4 : 7.0).repeatForever(autoreverses: false)) {
+            reactorRotation = 360
+        }
     }
 }
 
