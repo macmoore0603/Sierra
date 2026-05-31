@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>MKDirectionsRequest</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.apple.maps.directionsrequest</string>
+			</array>
+		</dict>
+	</array>
+	<key>GCSupportedGameControllers</key>
+	<array>
+		<dict>
+			<key>ProfileName</key>
+			<string>ExtendedGamepad</string>
+		</dict>
+		<dict>
+			<key>ProfileName</key>
+			<string>DirectionalGamepad</string>
+		</dict>
+		<dict>
+			<key>ProfileName</key>
+			<string>MicroGamepad</string>
+		</dict>
+		<dict>
+			<key>ProfileName</key>
+			<string>SpatialGamepad</string>
+		</dict>
+	</array>
+	<key>MKDirectionsApplicationSupportedModes</key>
+	<array>
+		<string>MKDirectionsModeCar</string>
+		<string>MKDirectionsModePlane</string>
+		<string>MKDirectionsModeRideShare</string>
+		<string>MKDirectionsModeStreetCar</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Sierra uses the microphone to listen for the wake word and your voice commands.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Sierra uses speech recognition to transcribe and understand what you say.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Sierra uses the camera to see and respond to what you show it.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Sierra uses your location to provide location-aware assistance.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Sierra uses your location to provide location-aware assistance.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Sierra uses your location to provide location-aware assistance, including in the background.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Sierra uses your contacts to help you reach the right people.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Sierra uses your calendar to manage events and your schedule.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Sierra uses your calendar to manage events and your schedule.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Sierra uses Reminders to create and track your tasks.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Sierra uses Reminders to create and track your tasks.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Sierra accesses your photo library to view and work with your photos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Sierra saves images and screenshots to your photo library.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Sierra accesses your media library to play and manage your music.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Sierra uses Bluetooth to connect to nearby devices and accessories.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Sierra uses Bluetooth to connect to nearby devices and accessories.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Sierra uses the local network to communicate with its backend service and nearby devices.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Sierra accesses your Desktop folder to read and manage files you ask about.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Sierra accesses your Documents folder to read and manage files you ask about.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Sierra accesses your Downloads folder to read and manage files you ask about.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Sierra accesses network volumes to read and manage files you ask about.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Sierra accesses removable volumes to read and manage files you ask about.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Sierra uses automation to control other apps on your behalf.</string>
+	<key>NSSystemAdministrationUsageDescription</key>
+	<string>Sierra performs system administration tasks you request.</string>
+	<key>NSSystemExtensionUsageDescription</key>
+	<string>Sierra installs system extensions required for its features.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Sierra uses motion data to respond to movement and context.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Sierra reads health data to give you health-aware assistance.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Sierra updates health data on your behalf.</string>
+	<key>NSHomeKitUsageDescription</key>
+	<string>Sierra controls your HomeKit accessories.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Sierra uses Face ID to keep your assistant secure.</string>
+	<key>NSSiriUsageDescription</key>
+	<string>Sierra works with Siri to handle your requests.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Sierra uses this to personalize your experience.</string>
+	<key>NSNearbyInteractionUsageDescription</key>
+	<string>Sierra uses nearby interaction to locate and connect with nearby devices.</string>
+	<key>NSFocusStatusUsageDescription</key>
+	<string>Sierra reads your Focus status to time its notifications appropriately.</string>
+	<key>NSGKFriendListUsageDescription</key>
+	<string>Sierra accesses your Game Center friends list.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-peripheral</string>
+		<string>audio</string>
+		<string>fetch</string>
+		<string>external-accessory</string>
+		<string>processing</string>
+		<string>location</string>
+		<string>remote-notification</string>
+		<string>push-to-talk</string>
+		<string>nearby-interaction</string>
+		<string>bluetooth-central</string>
+		<string>voip</string>
+	</array>
+</dict>
+</plist>
