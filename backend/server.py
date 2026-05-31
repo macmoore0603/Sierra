@@ -9,11 +9,12 @@ if sys.platform == 'win32':
 import socketio
 import uvicorn
 from fastapi import FastAPI
-import asyncio
-import threading
-import sys
-import os
 import json
+import logging
+import os
+import signal
+import threading
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -32,20 +33,18 @@ sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 app = FastAPI()
 app_socketio = socketio.ASGIApp(sio, app)
 
-import signal
+logger = logging.getLogger("sierra.server")
 
 # --- SHUTDOWN HANDLER ---
 def signal_handler(sig, frame):
-    print(f"\n[SERVER] Caught signal {sig}. Exiting gracefully...")
-    # Clean up audio loop
+    logger.info("Caught signal %s. Exiting gracefully...", sig)
     if audio_loop:
         try:
-            print("[SERVER] Stopping Audio Loop...")
-            audio_loop.stop() 
-        except:
-            pass
-    # Force kill
-    print("[SERVER] Force exiting...")
+            logger.info("Stopping Audio Loop...")
+            audio_loop.stop()
+        except Exception:
+            logger.exception("Error stopping audio loop during shutdown")
+    logger.info("Force exiting...")
     os._exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -90,17 +89,17 @@ def load_settings():
                          SETTINGS["tool_permissions"].update(v)
                     else:
                         SETTINGS[k] = v
-            print(f"Loaded settings: {SETTINGS}")
+            logger.info("Loaded settings: %s", SETTINGS)
         except Exception as e:
-            print(f"Error loading settings: {e}")
+            logger.exception("Error loading settings: %s", e)
 
 def save_settings():
     try:
         with open(SETTINGS_FILE, 'w') as f:
             json.dump(SETTINGS, f, indent=4)
-        print("Settings saved.")
+        logger.info("Settings saved.")
     except Exception as e:
-        print(f"Error saving settings: {e}")
+        logger.exception("Error saving settings: %s", e)
 
 # Load on startup
 load_settings()
@@ -110,9 +109,9 @@ load_settings()
 # silently to Gemini-only mode if the model can't be loaded.
 try:
     sierra_router.warm_up_async()
-    print("[SERVER] Sierra local router warmup started.")
+    logger.info("Sierra local router warmup started.")
 except Exception as _router_warmup_err:  # pragma: no cover - defensive
-    print(f"[SERVER] Could not start router warmup: {_router_warmup_err}")
+    logger.warning("Could not start router warmup: %s", _router_warmup_err)
 
 authenticator = None
 kasa_agent = KasaAgent(known_devices=SETTINGS.get("kasa_devices"))
@@ -120,34 +119,45 @@ kasa_agent = KasaAgent(known_devices=SETTINGS.get("kasa_devices"))
 
 @app.on_event("startup")
 async def startup_event():
-    import sys
-    print(f"[SERVER DEBUG] Startup Event Triggered")
-    print(f"[SERVER DEBUG] Python Version: {sys.version}")
+    logger.info("Startup Event Triggered (Python %s)", sys.version)
     try:
         loop = asyncio.get_running_loop()
-        print(f"[SERVER DEBUG] Running Loop: {type(loop)}")
+        logger.debug("Running Loop: %s", type(loop))
         policy = asyncio.get_event_loop_policy()
-        print(f"[SERVER DEBUG] Current Policy: {type(policy)}")
+        logger.debug("Current Policy: %s", type(policy))
     except Exception as e:
-        print(f"[SERVER DEBUG] Error checking loop: {e}")
+        logger.debug("Error checking loop: %s", e)
 
-    print("[SERVER] Startup: Initializing Kasa Agent...")
+    logger.info("Startup: Initializing Kasa Agent...")
     await kasa_agent.initialize()
 
 @app.get("/status")
 async def status():
     return {"status": "running", "service": "Sierra Backend"}
 
+@app.get("/health")
+async def health():
+    """Detailed health check endpoint for monitoring and readiness probes."""
+    router_ready = sierra_router.is_ready() if hasattr(sierra_router, "is_ready") else None
+    return {
+        "status": "healthy",
+        "audio_loop_active": audio_loop is not None,
+        "router_ready": router_ready,
+        "face_auth_enabled": SETTINGS.get("face_auth_enabled", False),
+        "connected_printers": len(SETTINGS.get("printers", [])),
+        "kasa_devices_configured": len(SETTINGS.get("kasa_devices", [])),
+    }
+
 @sio.event
 async def connect(sid, environ):
-    print(f"Client connected: {sid}")
+    logger.info("Client connected: %s", sid)
     await sio.emit('status', {'msg': 'Connected to Sierra Backend'}, room=sid)
 
     global authenticator
     
     # Callback for Auth Status
     async def on_auth_status(is_auth):
-        print(f"[SERVER] Auth status change: {is_auth}")
+        logger.info("Auth status change: %s", is_auth)
         await sio.emit('auth_status', {'authenticated': is_auth})
 
     # Callback for Auth Camera Frames
@@ -173,14 +183,14 @@ async def connect(sid, environ):
             asyncio.create_task(authenticator.start_authentication_loop())
         else:
             # Bypass Auth
-            print("Face Auth Disabled. Auto-authenticating.")
+            logger.info("Face Auth Disabled. Auto-authenticating.")
             # We don't change authenticator state to true to avoid confusion if re-enabled? 
             # Or we should just tell client it's auth'd.
             await sio.emit('auth_status', {'authenticated': True})
 
 @sio.event
 async def disconnect(sid):
-    print(f"Client disconnected: {sid}")
+    logger.info("Client disconnected: %s", sid)
 
 @sio.event
 async def start_audio(sid, data=None):
@@ -190,11 +200,11 @@ async def start_audio(sid, data=None):
     # Only block if auth is ENABLED and not authenticated
     if SETTINGS.get("face_auth_enabled", False):
         if authenticator and not authenticator.authenticated:
-            print("Blocked start_audio: Not authenticated.")
+            logger.warning("Blocked start_audio: Not authenticated.")
             await sio.emit('error', {'msg': 'Authentication Required'})
             return
 
-    print("Starting Audio Loop...")
+    logger.info("Starting Audio Loop...")
     
     device_index = None
     device_name = None
@@ -204,15 +214,15 @@ async def start_audio(sid, data=None):
         if 'device_name' in data:
             device_name = data['device_name']
             
-    print(f"Using input device: Name='{device_name}', Index={device_index}")
+    logger.info("Using input device: Name='%s', Index=%s", device_name, device_index)
     
     if audio_loop:
         if loop_task and (loop_task.done() or loop_task.cancelled()):
-             print("Audio loop task appeared finished/cancelled. Clearing and restarting...")
+             logger.info("Audio loop task appeared finished/cancelled. Clearing and restarting...")
              audio_loop = None
              loop_task = None
         else:
-             print("Audio loop already running. Re-connecting client to session.")
+             logger.info("Audio loop already running. Re-connecting client to session.")
              await sio.emit('status', {'msg': 'Sierra Already Running'})
              return
 
@@ -226,12 +236,12 @@ async def start_audio(sid, data=None):
     # Callback to send CAL data to frontend
     def on_cad_data(data):
         info = f"{len(data.get('vertices', []))} vertices" if 'vertices' in data else f"{len(data.get('data', ''))} bytes (STL)"
-        print(f"Sending CAD data to frontend: {info}")
+        logger.debug("Sending CAD data to frontend: %s", info)
         asyncio.create_task(sio.emit('cad_data', data))
 
     # Callback to send Browser data to frontend
     def on_web_data(data):
-        print(f"Sending Browser data to frontend: {len(data.get('log', ''))} chars logs")
+        logger.debug("Sending Browser data to frontend: %d chars logs", len(data.get('log', '')))
         asyncio.create_task(sio.emit('browser_frame', data))
         
     # Callback to send Transcription data to frontend
@@ -242,7 +252,7 @@ async def start_audio(sid, data=None):
     # Callback to send Confirmation Request to frontend
     def on_tool_confirmation(data):
         # data = {"id": "uuid", "tool": "tool_name", "args": {...}}
-        print(f"Requesting confirmation for tool: {data.get('tool')}")
+        logger.info("Requesting confirmation for tool: %s", data.get('tool'))
         asyncio.create_task(sio.emit('tool_confirmation_request', data))
 
     # Callback to send CAD status to frontend
@@ -251,11 +261,11 @@ async def start_audio(sid, data=None):
         # - a string like "generating" (from sierra.py handle_cad_request)
         # - a dict with {status, attempt, max_attempts, error} (from CadAgent)
         if isinstance(status, dict):
-            print(f"Sending CAD Status: {status.get('status')} (attempt {status.get('attempt')}/{status.get('max_attempts')})")
+            logger.info("Sending CAD Status: %s (attempt %s/%s)", status.get('status'), status.get('attempt'), status.get('max_attempts'))
             asyncio.create_task(sio.emit('cad_status', status))
         else:
             # Legacy: simple string
-            print(f"Sending CAD Status: {status}")
+            logger.info("Sending CAD Status: %s", status)
             asyncio.create_task(sio.emit('cad_status', {'status': status}))
 
     # Callback to send CAD thoughts to frontend (streaming)
@@ -264,23 +274,23 @@ async def start_audio(sid, data=None):
 
     # Callback to send Project Update to frontend
     def on_project_update(project_name):
-        print(f"Sending Project Update: {project_name}")
+        logger.info("Sending Project Update: %s", project_name)
         asyncio.create_task(sio.emit('project_update', {'project': project_name}))
 
     # Callback to send Device Update to frontend
     def on_device_update(devices):
         # devices is a list of dicts
-        print(f"Sending Kasa Device Update: {len(devices)} devices")
+        logger.info("Sending Kasa Device Update: %d devices", len(devices))
         asyncio.create_task(sio.emit('kasa_devices', devices))
 
     # Callback to send Error to frontend
     def on_error(msg):
-        print(f"Sending Error to frontend: {msg}")
+        logger.error("Sending Error to frontend: %s", msg)
         asyncio.create_task(sio.emit('error', {'msg': msg}))
 
     # Initialize Sierra
     try:
-        print(f"Initializing AudioLoop with device_index={device_index}")
+        logger.info("Initializing AudioLoop with device_index=%s", device_index)
         audio_loop = sierra.AudioLoop(
             video_mode="none", 
             on_audio_data=on_audio_data,
@@ -298,17 +308,17 @@ async def start_audio(sid, data=None):
             input_device_name=device_name,
             kasa_agent=kasa_agent
         )
-        print("AudioLoop initialized successfully.")
+        logger.info("AudioLoop initialized successfully.")
 
         # Apply current permissions
         audio_loop.update_permissions(SETTINGS["tool_permissions"])
         
         # Check initial mute state
         if data and data.get('muted', False):
-            print("Starting with Audio Paused")
+            logger.info("Starting with Audio Paused")
             audio_loop.set_paused(True)
 
-        print("Creating asyncio task for AudioLoop.run()")
+        logger.info("Creating asyncio task for AudioLoop.run()")
         loop_task = asyncio.create_task(audio_loop.run())
         
         # Add a done callback to catch silent failures in the loop
@@ -316,20 +326,20 @@ async def start_audio(sid, data=None):
             try:
                 task.result()
             except asyncio.CancelledError:
-                print("Audio Loop Cancelled")
+                logger.info("Audio Loop Cancelled")
             except Exception as e:
-                print(f"Audio Loop Crashed: {e}")
+                logger.exception("Audio Loop Crashed: %s", e)
                 # You could emit 'error' here if you have context
         
         loop_task.add_done_callback(handle_loop_exit)
         
-        print("Emitting 'Sierra Started'")
+        logger.info("Emitting 'Sierra Started'")
         await sio.emit('status', {'msg': 'Sierra Started'})
 
         # Load saved printers
         saved_printers = SETTINGS.get("printers", [])
         if saved_printers and audio_loop.printer_agent:
-            print(f"[SERVER] Loading {len(saved_printers)} saved printers...")
+            logger.info("Loading %d saved printers...", len(saved_printers))
             for p in saved_printers:
                 audio_loop.printer_agent.add_printer_manually(
                     name=p.get("name", p["host"]),
@@ -343,16 +353,14 @@ async def start_audio(sid, data=None):
         asyncio.create_task(monitor_printers_loop())
         
     except Exception as e:
-        print(f"CRITICAL ERROR STARTING Sierra: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("CRITICAL ERROR STARTING Sierra: %s", e)
         await sio.emit('error', {'msg': f"Failed to start: {str(e)}"})
         audio_loop = None # Ensure we can try again
 
 
 async def monitor_printers_loop():
     """Background task to query printer status periodically."""
-    print("[SERVER] Starting Printer Monitor Loop")
+    logger.info("Starting Printer Monitor Loop")
     while audio_loop and audio_loop.printer_agent:
         try:
             agent = audio_loop.printer_agent
@@ -375,10 +383,10 @@ async def monitor_printers_loop():
                         await sio.emit('print_status_update', res.to_dict())
                         
         except asyncio.CancelledError:
-            print("[SERVER] Printer Monitor Cancelled")
+            logger.info("Printer Monitor Cancelled")
             break
         except Exception as e:
-            print(f"[SERVER] Monitor Loop Error: {e}")
+            logger.warning("Monitor Loop Error: %s", e)
             
         await asyncio.sleep(2) # Update every 2 seconds for responsiveness
 
@@ -387,7 +395,7 @@ async def stop_audio(sid):
     global audio_loop
     if audio_loop:
         audio_loop.stop() 
-        print("Stopping Audio Loop")
+        logger.info("Stopping Audio Loop")
         audio_loop = None
         await sio.emit('status', {'msg': 'Sierra Stopped'})
 
@@ -396,7 +404,7 @@ async def pause_audio(sid):
     global audio_loop
     if audio_loop:
         audio_loop.set_paused(True)
-        print("Pausing Audio")
+        logger.info("Pausing Audio")
         await sio.emit('status', {'msg': 'Audio Paused'})
 
 @sio.event
@@ -404,7 +412,7 @@ async def resume_audio(sid):
     global audio_loop
     if audio_loop:
         audio_loop.set_paused(False)
-        print("Resuming Audio")
+        logger.info("Resuming Audio")
         await sio.emit('status', {'msg': 'Audio Resumed'})
 
 @sio.event
@@ -413,40 +421,38 @@ async def confirm_tool(sid, data):
     request_id = data.get('id')
     confirmed = data.get('confirmed', False)
     
-    print(f"[SERVER DEBUG] Received confirmation response for {request_id}: {confirmed}")
+    logger.debug("Received confirmation response for %s: %s", request_id, confirmed)
     
     if audio_loop:
         audio_loop.resolve_tool_confirmation(request_id, confirmed)
     else:
-        print("Audio loop not active, cannot resolve confirmation.")
+        logger.warning("Audio loop not active, cannot resolve confirmation.")
 
 @sio.event
 async def shutdown(sid, data=None):
     """Gracefully shutdown the server when the application closes."""
     global audio_loop, loop_task, authenticator
     
-    print("[SERVER] ========================================")
-    print("[SERVER] SHUTDOWN SIGNAL RECEIVED FROM FRONTEND")
-    print("[SERVER] ========================================")
+    logger.info("SHUTDOWN SIGNAL RECEIVED FROM FRONTEND")
     
     # Stop audio loop
     if audio_loop:
-        print("[SERVER] Stopping Audio Loop...")
+        logger.info("Stopping Audio Loop...")
         audio_loop.stop()
         audio_loop = None
     
     # Cancel the loop task if running
     if loop_task and not loop_task.done():
-        print("[SERVER] Cancelling loop task...")
+        logger.info("Cancelling loop task...")
         loop_task.cancel()
         loop_task = None
     
     # Stop authenticator if running
     if authenticator:
-        print("[SERVER] Stopping Authenticator...")
+        logger.info("Stopping Authenticator...")
         authenticator.stop()
     
-    print("[SERVER] Graceful shutdown complete. Terminating process...")
+    logger.info("Graceful shutdown complete. Terminating process...")
     
     # Force exit immediately - os._exit bypasses cleanup but ensures termination
     os._exit(0)
@@ -468,12 +474,12 @@ async def _emit_local_route(sid, text):
         # so we don't stall the asyncio loop.
         result = await asyncio.to_thread(router.route, text)
         await sio.emit('sierra_route', result.to_dict(), room=sid)
-        print(
-            f"[SERVER] Local route: {result.function} "
-            f"({result.confidence:.2f}, {result.latency_ms:.0f}ms)"
+        logger.info(
+            "Local route: %s (%.2f, %.0fms)",
+            result.function, result.confidence, result.latency_ms,
         )
     except Exception as e:  # pragma: no cover - defensive
-        print(f"[SERVER] Local router error (non-fatal): {e}")
+        logger.warning("Local router error (non-fatal): %s", e)
 
 
 @sio.event

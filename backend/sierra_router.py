@@ -565,11 +565,17 @@ def warm_up_async() -> threading.Thread:
     return thread
 
 
+def is_ready() -> bool:
+    """Return ``True`` if the on-device router model is loaded and ready."""
+    return _router_singleton is not None
+
+
 __all__ = [
     "SIERRA_TOOLS",
     "VALID_FUNCTION_NAMES",
     "RouteResult",
     "SierraRouter",
     "get_router",
+    "is_ready",
     "warm_up_async",
 ]

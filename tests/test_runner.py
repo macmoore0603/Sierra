@@ -15,12 +15,15 @@ from pathlib import Path
 # Test modules mapping
 MODULES = {
     "kasa": "test_kasa_agent.py",
+    "kasa_helpers": "test_kasa_helpers.py",
     "printer": "test_printer_agent.py",
     "cad": "test_cad_agent.py",
     "web": "test_web_agent.py",
     "auth": "test_authenticator.py",
     "tools": "test_sierra_tools.py",
     "router": "test_sierra_router.py",
+    "project": "test_project_manager.py",
+    "logging": "test_logging_config.py",
 }
 
 TESTS_DIR = Path(__file__).parent
