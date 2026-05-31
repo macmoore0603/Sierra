@@ -12,7 +12,9 @@ This is the native counterpart to the Electron app — the shipped binary is
 
 | File | Purpose |
 |------|---------|
-| `Sierra/ContentView.swift` | App entry point (`SierraApp`), `AppDelegate` (status item + daily-briefing notifications), and the chat / wake-word UI. |
+| `Sierra/ContentView.swift` | App entry point (`SierraApp`), `AppDelegate` (status item + daily-briefing notifications), and the chat / wake-word UI driven by a `SierraViewModel`. |
+| `Sierra/SierraSocketClient.swift` | Dependency-free Socket.IO (v5) / Engine.IO (v4) client over `URLSessionWebSocketTask` — the real-time link to the backend. |
+| `Sierra/AudioStreamPlayer.swift` | Streams Sierra's voice (`audio_data`, 16-bit/24 kHz PCM) to the speakers via `AVAudioEngine`. |
 | `Sierra/Item.swift` | SwiftData model. |
 | `Sierra/Info.plist` | Bundle config + **full privacy usage descriptions** (TCC). |
 | `Sierra/Sierra.entitlements` | App capabilities + **App Sandbox resource access**. |
@@ -49,17 +51,25 @@ The app's voice loop is real-time **on-device**: `SFSpeechRecognizer` + `AVAudio
 do continuous wake-word detection ("Hey Sierra") and live partial transcription with
 no server round-trip.
 
-For responses it calls the backend at `http://localhost:8000/chat`
-(`POST {"message": ...}` → `{"response": ...}`). That REST route is served by
-[`backend/server.py`](../backend/server.py) and is backed by Gemini text generation —
-a fast request/response turn. Set `GEMINI_API_KEY` (and optionally `GEMINI_TEXT_MODEL`,
-default `gemini-2.5-flash`) in the backend `.env`.
+**Voice (true real-time, streaming).** Pressing the mic — or saying "Hey Sierra" —
+opens a live **Socket.IO** session to the backend (`SierraSocketClient`):
 
-> **Full streaming voice (Gemini Live audio):** the backend also exposes a true
-> real-time audio pipeline over **Socket.IO** (`start_audio` → `transcription` /
-> `audio_data` events), which the Electron frontend uses. Wiring the native app to
-> that pipeline (via a Socket.IO Swift client) is a future enhancement; today the
-> native app uses on-device transcription + the `/chat` REST turn.
+1. the app emits `start_audio`;
+2. the backend's Gemini Live loop streams back `transcription` events
+   (`{"sender": "User"|"Sierra", "text": ...}`), rendered into the chat as they
+   arrive (the same speaker's bubble grows in place);
+3. `audio_data` chunks (16-bit/24 kHz PCM) are played the instant they arrive via
+   `AudioStreamPlayer`, so you hear Sierra speak in real time;
+4. `stop_audio` ends the turn and the app resumes on-device wake-word listening.
+
+The client speaks Engine.IO v4 / Socket.IO v5 directly over
+`URLSessionWebSocketTask` — **no third-party packages**, nothing to add in Xcode.
+
+**Text.** Typed messages use `http://localhost:8000/chat`
+(`POST {"message": ...}` → `{"response": ...}`), served by
+[`backend/server.py`](../backend/server.py) and backed by Gemini text generation.
+Set `GEMINI_API_KEY` (and optionally `GEMINI_TEXT_MODEL`, default
+`gemini-2.5-flash`) in the backend `.env`.
 
 ## Building
 
