@@ -97,12 +97,39 @@ These files turn the philosophy into actual components and hooks for the current
 
 See the individual files for copy-paste snippets and comments linking back to the exact user quotes that drove them ("i want everything in sierra to have god mode", "never show off", "DAEMON is off", etc.).
 
+## Native macOS Swift Client (Full Access)
+
+Sierra also ships a native SwiftUI/AppKit menu-bar + Arc Reactor HUD app
+(`macos/Sierra/`). It is configured with the complete "give Sierra access to
+everything" treatment:
+
+- **Info.plist**: 35+ `NS*UsageDescription` keys (microphone, speech recognition,
+  camera, location variants, contacts, calendars, reminders, photos, local
+  network, Apple Events automation, HealthKit, HomeKit, Face ID, etc.) plus
+  open ATS for local networking.
+- **Sierra.entitlements**: All relevant App Sandbox resource entitlements
+  (device.audio-input, device.camera, personal-information.*, files.*,
+  assets.*, network.client + server, automation.apple-events, etc.).
+- No `com.apple.security.app-sandbox` key — the app remains unsandboxed for
+  maximum God Mode reach (Apple Events, Full Disk, Accessibility, etc.).
+
+After build/install, run `scripts/macos-activate-permissions.sh` and drag the
+two canonical paths (`/Applications/Sierra.app` and the daemon venv Python)
+into every Privacy & Security pane. The native HUD then participates in the
+same pervasive God Mode rules as the primary Tauri Arc Reactor (no "off"
+states for voice, gestures, presence, or system control when full access is
+granted).
+
+This gives users a lightweight status-bar native experience while the Tauri
+Arc Reactor remains the default immersive hero view.
+
 ## Related Documents
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — God Mode philosophy section
 - [ROADMAP.md](./ROADMAP.md) — Pervasive God Mode as top priority
 - `scripts/macos-activate-permissions.sh` — One-command pane opener + instructions
-- Open issues #6–#15 on GitHub (implementation tracking)
+- `macos/README.md` — Details on the native Swift full-access app
+- Open issues #6–#15 + #29 on GitHub (implementation tracking)
 
 ---
 
