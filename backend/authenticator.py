@@ -8,6 +8,11 @@ import base64
 import numpy as np
 import urllib.request
 
+# GOD MODE NOTE:
+# In pervasive God Mode (the default), face authentication should auto-start on launch
+# with no manual enable step. The UI must never show it as "off" or restricted.
+# See GOD_MODE.md for the full auto-activation and "no off states" requirements.
+
 class FaceAuthenticator:
     # MediaPipe Face Landmarker model URL
     MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
