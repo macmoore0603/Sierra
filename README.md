@@ -12,23 +12,53 @@ Sierra is built on the open-source [A.D.A V2](https://github.com/nazirlouis/ada_
 
 ---
 
+## 🌟 Current State — Pervasive God Mode / Every Option Access
+
+**As of the latest extended "do all" development session, Sierra is designed with pervasive, automatic God Mode as the default and only experience.**
+
+### Core God Mode Principles (Everything in God Mode)
+- **No "off" states**: The UI never shows restricted, disabled, or "off" indicators for core capabilities (voice wake word "Hey Sierra", gestures, face auth, camera, background processes, personal integrations, etc.) when God Mode is active.
+- **Auto-force on load**: On app startup, voice, gestures, presence, and full system access are automatically activated with no manual toggles required.
+- **Full Access by default**: High-privilege actions (system control, AppleScript-equivalent automation, personal data access, public actions, ad spend, banking flows if integrated, proactive agents) have minimal or no extra confirmation gates.
+- **One canonical app only**: Always launch from the installed production build. Build artifacts are never launched directly.
+- **Aggressive permission activation**: One big "ACTIVATE ALL PERMISSIONS" button + dedicated macOS privacy script that opens every relevant TCC pane (Camera for gestures, Accessibility, Automation, Full Disk, Screen Recording, Microphone, etc.) and tells you the exact paths to add.
+
+### How to Activate Full God Mode Permissions (macOS)
+
+1. In the app, go to Settings → macOS Privacy & Security.
+2. Click the big gold button:
+   > **🔓 ACTIVATE ALL PERMISSIONS NOW (God Mode)**
+3. Drag these two paths into the open panes (especially **Camera**):
+   - The installed Sierra app
+   - The backend Python process
+4. Run the privacy activation script for best results:
+   ```bash
+   # (path will be documented once the script is added to this repo)
+   ```
+
+After this, Sierra runs with true "everything unlocked" behavior.
+
+See the upcoming `GOD_MODE.md` for the full philosophy and implementation details from the development sessions.
+
+---
+
 ## 🌟 Sierra's Vision
 
 **Goal**: Build the most powerful, capable, persistent, self-improving, voice-first, privacy-focused personal AI agent ever created.
 
-Sierra is evolving toward deep, configurable access to your personal ecosystem (Calendar, Gmail, GitHub, notes, location, etc.) with robust safety/confirmation mechanisms, multi-agent orchestration, advanced memory/RAG, and proactive behavior.
+In God Mode, this means deep, configurable access to your personal ecosystem (Calendar, Gmail, GitHub, notes, location, full system automation) with the safety mechanisms relaxed but still present for truly destructive actions.
 
 ---
 
 ## 🚀 Current Architecture Highlights
 
 - **Memory & Context** (`backend/memory.py` + `context.py`): Persistent semantic memory with easy context retrieval for prompt injection and self-improvement.
-- **Agent Orchestrator** (`backend/agents/orchestrator.py`): Intelligent routing, safety checks, and automatic memory logging. Ready for LangGraph/CrewAI.
+- **Agent Orchestrator** (`backend/agents/orchestrator.py`): Intelligent routing, safety checks (relaxed in God Mode), and automatic memory logging. Ready for LangGraph/CrewAI.
 - **Integrations Layer** (`backend/integrations/`): Clean base class + live examples (Calendar, GitHub). Consistent safety and memory support.
 - **Tools** (`backend/tools.py`): Rich, categorized function declarations for Gemini.
-- **Core** (`backend/server.py` + `sierra.py`): Real-time voice with Gemini Native Audio + existing robust confirmation system.
+- **Core** (`backend/server.py` + `sierra.py`): Real-time voice with Gemini Native Audio + existing robust confirmation system (God Mode minimizes confirmations).
 
-See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for a detailed overview and [`ROADMAP.md`](./ROADMAP.md) for future direction.
+See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for a detailed overview and [`ROADMAP.md`](./ROADMAP.md) for future direction (God Mode is now a core priority).
 
 ---
 
@@ -38,6 +68,7 @@ See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for a detailed overview and [`ROADMAP
 - Capable multi-agent orchestrator with safety and logging
 - Extensible personal integrations (Calendar + GitHub examples)
 - Clear architecture documentation
+- **Pervasive God Mode foundation** (auto-activation, no "off" states, full access philosophy)
 
 The project is under active iterative development. Check recent commits for the latest progress.
 
@@ -69,6 +100,8 @@ cp .env.example .env
 conda activate sierra && npm run dev
 ```
 
+**Note**: After setup, run the (upcoming) God Mode permission activation flow for full system/gesture/camera access.
+
 </details>
 
 ---
@@ -81,5 +114,5 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 <p align="center">
   <strong>Sierra — built on the open-source <a href="https://github.com/nazirlouis/ada_v2">A.D.A V2</a> stack by Nazir Louis, extended with the <a href="https://github.com/nazirlouis/ada_local">A.D.A Local</a> Function-Gemma router and the <a href="https://huggingface.co/Mac7Moore/ada_model">Mac7Moore/ada_model</a> fine-tuned adapter on <a href="https://huggingface.co/google/functiongemma-270m-it">google/functiongemma-270m-it</a>.</strong><br>
-  <em>Bridging AI, CAD, and Vision in a Single Interface</em>
+  <em>Bridging AI, CAD, and Vision in a Single Interface — now with pervasive God Mode</em>
 </p>
