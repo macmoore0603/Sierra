@@ -23,6 +23,7 @@ if sys.version_info < (3, 11, 0):
     asyncio.ExceptionGroup = exceptiongroup.ExceptionGroup
 
 from tools import tools_list
+from execution_policy import requires_confirmation
 
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
@@ -815,14 +816,11 @@ class AudioLoop:
                             if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "switch_project", "list_projects", "list_smart_devices", "control_light", "discover_printers", "print_stl", "get_print_status", "iterate_cad"]:
                                 prompt = fc.args.get("prompt", "") # Prompt is not present for all tools
                                 
-                                # Real-time execution: in God Mode every tool runs
-                                # immediately unless explicitly flagged as destructive
-                                # (confirm_tools). Otherwise fall back to per-tool
-                                # permissions (default True == confirmation required).
-                                if self.god_mode and fc.name not in self.confirm_tools:
-                                    confirmation_required = False
-                                else:
-                                    confirmation_required = self.permissions.get(fc.name, True)
+                                # Real-time execution policy (see execution_policy.py
+                                # / GOD_MODE.md): God Mode runs tools immediately,
+                                # gating only destructive ops in confirm_tools.
+                                confirmation_required = requires_confirmation(
+                                    fc.name, self.god_mode, self.confirm_tools, self.permissions)
 
                                 if not confirmation_required:
                                     print(f"[Sierra DEBUG] [TOOL] Real-time execute: '{fc.name}' -> AUTO-ALLOW")
