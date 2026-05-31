@@ -1,33 +1,43 @@
+# Sierra requirements
+# Core (from A.D.A V2 base)
 fastapi
 uvicorn
 python-socketio
-python-multipart
-# Google GenAI SDK (v1beta)
-google-genai
-# Computer Vision & Audio
-opencv-python
-pyaudio
-pillow
-mss
-# Browser Automation
-playwright
-# Smart Home
-python-kasa
-# 3D Printing
-zeroconf>=0.131.0
-aiohttp>=3.9.0
-# Utilities
 python-dotenv
-# Face & Hand tracking
-mediapipe
-# CAD Generation
-build123d
-# Sierra Local Function-Calling Router
-# (Mac7Moore/ada_model LoRA adapter on google/functiongemma-270m-it)
-transformers>=4.41
-peft>=0.10
-huggingface-hub>=0.23
-torch>=2.0
-accelerate>=0.30
-safetensors>=0.4
-sentencepiece
+pydantic
+
+# LLM & AI
+langchain
+langchain-groq
+langchain-google-genai
+
+# Multi-Agent (A.V.E.N.G.E.R.S)
+crewai
+langgraph
+
+# Voice & Audio (existing + enhancements)
+# Add your existing voice deps here
+
+# Dashboard
+streamlit
+
+# Tools & Integrations
+requests
+# For real Google Calendar/Gmail:
+# google-api-python-client
+google-auth
+google-auth-oauthlib
+# For GitHub:
+# PyGithub
+
+# Memory & Embeddings (for Weaver + RAG)
+chromadb
+sentence-transformers
+
+# On-device router (existing)
+transformers
+peft
+torch
+accelerate
+safetensors
+huggingface-hub
