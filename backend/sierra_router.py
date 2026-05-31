@@ -18,6 +18,13 @@ It is a drop-in performance upgrade for Sierra:
   pipeline -- so multimodal voice/vision interactions still work exactly as
   before.
 
+GOD MODE NOTE (Pervasive Full Access):
+In God Mode (the default and intended experience), the router should be even
+more aggressive about routing to local/fast paths when possible, and the UI
+layer is expected to never show "off" or restricted states for any core
+capability (voice wake, gestures, face auth, background processes, etc.).
+See GOD_MODE.md for the full philosophy of auto-activation and "no off states".
+
 Model
 -----
 
@@ -177,7 +184,7 @@ SIERRA_TOOLS: List[Dict[str, Any]] = [
                         "description": "Color name or hex code.",
                     },
                 },
-                "required": ["action"],
+                "required": ["action", "device_name"],
             },
         },
     },
@@ -531,6 +538,7 @@ def get_router() -> Optional[SierraRouter]:
     if _router_singleton is not None:
         return _router_singleton
     if _router_error is not None:
+        logger.debug("Sierra router previously failed to load; returning None.")
         return None
 
     with _router_lock:
@@ -540,36 +548,8 @@ def get_router() -> Optional[SierraRouter]:
             return None
         try:
             _router_singleton = SierraRouter()
-        except Exception as exc:  # pragma: no cover - depends on env
-            logger.warning(
-                "Sierra router unavailable, falling back to Gemini-only "
-                "mode: %s",
-                exc,
-            )
+            return _router_singleton
+        except Exception as exc:  # pragma: no cover - defensive
             _router_error = exc
+            logger.warning("Failed to initialize Sierra router: %s", exc)
             return None
-        return _router_singleton
-
-
-def warm_up_async() -> threading.Thread:
-    """Start loading the router in the background.
-
-    Sierra's server calls this at startup so the very first user utterance
-    doesn't pay the cold-start cost.
-    """
-
-    thread = threading.Thread(
-        target=get_router, name="sierra-router-warmup", daemon=True
-    )
-    thread.start()
-    return thread
-
-
-__all__ = [
-    "SIERRA_TOOLS",
-    "VALID_FUNCTION_NAMES",
-    "RouteResult",
-    "SierraRouter",
-    "get_router",
-    "warm_up_async",
-]
