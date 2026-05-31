@@ -1,27 +1,26 @@
 import os
-import time
 import asyncio
 import base64
+import logging
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 from google import genai
 from google.genai import types
 
-# 1. Load API Key
+logger = logging.getLogger("sierra.web_agent")
+
 load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY")
 
-if not API_KEY:
-    raise ValueError("Please set GEMINI_API_KEY in your .env file")
-
-# 2. Configuration
 SCREEN_WIDTH = 1440
 SCREEN_HEIGHT = 900
-# UPDATED: Use the specific Computer Use preview model
 MODEL_ID = "gemini-2.5-computer-use-preview-10-2025"
+
 
 class WebAgent:
     def __init__(self):
+        if not API_KEY:
+            raise ValueError("Please set GEMINI_API_KEY in your .env file")
         self.client = genai.Client(api_key=API_KEY)
         self.browser = None
         self.context = None
@@ -310,7 +309,9 @@ class WebAgent:
                 response_parts = [types.Part(function_response=fr) for fr in function_responses]
                 chat_history.append(types.Content(role="user", parts=response_parts))
 
-            await self.browser.close()
+            if self.browser:
+                await self.browser.close()
+                self.browser = None
             print("[CLOSE] Browser closed.")
             return final_response
 

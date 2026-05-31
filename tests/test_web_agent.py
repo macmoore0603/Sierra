@@ -8,8 +8,12 @@ import os
 from web_agent import WebAgent
 
 
+@pytest.mark.skipif(
+    not os.getenv("GEMINI_API_KEY"),
+    reason="GEMINI_API_KEY not set"
+)
 class TestWebAgentInit:
-    """Test WebAgent initialization."""
+    """Test WebAgent initialization (requires API key)."""
     
     def test_agent_creation(self):
         """Test WebAgent can be created."""
@@ -26,6 +30,30 @@ class TestWebAgentInit:
         assert hasattr(agent, 'context')
 
 
+class TestWebAgentImport:
+    """Tests that don't require an API key."""
+
+    def test_module_imports_without_api_key(self):
+        """Importing web_agent should not raise when GEMINI_API_KEY is missing."""
+        import web_agent
+        assert hasattr(web_agent, "WebAgent")
+
+    def test_agent_raises_without_key(self):
+        """Instantiating WebAgent without API key should raise ValueError."""
+        import web_agent
+        original_key = web_agent.API_KEY
+        try:
+            web_agent.API_KEY = None
+            with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+                WebAgent()
+        finally:
+            web_agent.API_KEY = original_key
+
+
+@pytest.mark.skipif(
+    not os.getenv("GEMINI_API_KEY"),
+    reason="GEMINI_API_KEY not set"
+)
 class TestCoordinateDenormalization:
     """Test coordinate conversion functions."""
     
