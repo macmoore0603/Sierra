@@ -1,14 +1,24 @@
 {
   "name": "sierra-v2",
   "version": "1.0.0",
-  "description": "Sierra V2 - AI Assistant",
+  "description": "Sierra V2 - Multimodal AI Assistant with Pervasive God Mode / Every Option Access. Voice-first with Gemini Native Audio, on-device FunctionGemma routing, gestures, face auth, and full system control. No off states — everything powered on by default.",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && npx electron .\"",
     "build": "vite build",
     "start": "npx electron ."
   },
-  "keywords": [],
+  "keywords": [
+    "ai",
+    "assistant",
+    "god-mode",
+    "gemini",
+    "voice",
+    "gestures",
+    "electron",
+    "react",
+    "full-access"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
