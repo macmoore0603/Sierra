@@ -8,24 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-05-31
 
 ### Added
-- New `backend/context.py` — convenient helpers (`get_relevant_context`, `add_to_memory`) to make long-term memory easy to use across the system.
-- `ARCHITECTURE.md` — clear, high-level overview of current components, data flow, and future direction.
-- Continued refinement of memory + orchestrator + integrations pathway.
+- `backend/integrations/github.py` — GitHubIntegration example following the BaseIntegration pattern (list repos, create issues with confirmation).
+- `ROADMAP.md` — Clear prioritized roadmap covering Memory activation, Personal Integrations, Multi-Agent, Proactive behavior, and Polish.
+- Updated `README.md` with architecture highlights and links to ARCHITECTURE.md + ROADMAP.md.
 
 ### Progress
-The system now has:
-- Usable long-term memory with easy context helpers
-- Capable orchestrator with safety and memory logging
-- Extensible integrations layer (Calendar example live)
-- Clear architecture documentation
+Sierra now has:
+- Concrete examples of personal integrations (Calendar + GitHub)
+- Easy memory context helpers
+- Clear documentation of architecture and future direction
 
-This round focused on **usability and visibility** of the new foundations.
+This round focused on **making integrations real and the vision actionable**.
 
-## Summary of Recent Rounds
-- Round 4: First CalendarIntegration + orchestrator improvements
-- Round 3: Enhanced orchestrator + BaseIntegration
-- Round 2: Memory module + agents package
+## Recent Rounds
+- Round 5: context.py + ARCHITECTURE.md
+- Round 4: CalendarIntegration + orchestrator improvements
 
 ---
 
-> Sierra continues rapid, high-quality iteration.
+> Continuing focused, high-quality iteration toward the ultimate personal AI agent.
