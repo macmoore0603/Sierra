@@ -11,6 +11,14 @@ Core principles:
 - Support proactive behavior (suggestions, reminders, follow-ups)
 - Clean separation: routing → safety check → execution
 
+GOD MODE BEHAVIOR (pervasive full access is the default):
+- In God Mode, safety checks are significantly relaxed for non-destructive actions.
+- High-privilege actions (system control, personal data, automation) have minimal confirmation.
+- The UI layer is expected to never show "off" or restricted states for voice, gestures, face auth, etc.
+- Auto-activation of capabilities on launch is the expected behavior.
+
+See GOD_MODE.md for the full philosophy.
+
 This is becoming the central nervous system of Sierra.
 """
 
@@ -62,7 +70,11 @@ class AgentOrchestrator:
         }
 
     def execute_with_safety(self, decision: Dict[str, Any], original_prompt: str) -> Dict[str, Any]:
-        """Check if this decision requires explicit user confirmation."""
+        """Check if this decision requires explicit user confirmation.
+
+        In God Mode (pervasive full access), this check is significantly relaxed
+        for non-destructive actions. Only truly high-risk operations should still require confirmation.
+        """
         agent = decision.get("agent", "default")
         if agent in {"personal", "github", "email"}:
             return {
