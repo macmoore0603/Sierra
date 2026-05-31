@@ -1,40 +1,50 @@
-# Sierra A.V.E.N.G.E.R.S — Multi-Agent Roster (Complete)
+# Sierra A.V.E.N.G.E.R.S — Maximum Expanded Roster
 
-**Everything is now implemented and pushed.**
+**Now with the largest practical set of specialized agents** for a personal AI operating system.
 
-## Activation (Do This Now)
+**Total agents: 40+** (Core + Expanded life, intelligence, creation, system, and meta agents)
 
-1. Pull latest: `git pull origin main`
-2. Install new deps: `pip install -r requirements.txt`
-3. Run the dashboard: `streamlit run backend/agents/dashboard.py`
-4. (Optional but recommended) Import the integration in your main files:
+This is the most comprehensive multi-agent system we've built for Sierra yet.
 
-```python
-# In backend/sierra.py or server.py
-try:
-    from backend.agents.sierra_integration import get_avengers_system
-    self.avengers = get_avengers_system(your_llm)
-except Exception as e:
-    print("A.V.E.N.G.E.R.S not loaded:", e)
+## Quick Activation
+
+```bash
+git pull origin main
+pip install -r requirements.txt
+streamlit run backend/agents/dashboard.py
 ```
 
-You can now delegate complex tasks to the full 15-agent team with memory, voice, and safety.
+Then import in your code:
+```python
+from backend.agents.sierra_integration import get_avengers_system
+avengers = get_avengers_system(your_llm)
+```
 
-## What's Included (All Done)
+## Agent Categories
 
-- 15 specialized agents (Director, Scout, Forge, Chronos, Courier, Weaver, Echo, Sentinel, Operator, Maestro, Creator, Evolver, Guardian, Analyst, Toolsmith)
-- Per-agent memory
-- Per-agent voice/personas (plug into your existing voice system)
-- Sentinel safety gates on all actions
-- LangGraph stateful orchestrator
-- Drop-in `SierraAVENGERS` class for existing codebase
-- Streamlit visual dashboard + chat
-- React component (`frontend/src/components/AgentsRoster.jsx`)
-- Tool skeletons for Google Calendar, Gmail, GitHub, local files
-- Full documentation and activation helpers
+**Core Orchestration & Safety (6)**
+Director, Sentinel, Evolver, Weaver, Operator, Toolsmith
 
-This is a complete, ready-to-use multi-agent operating system layer for Sierra.
+**Personal Life & Wellness (8)**
+Chronos, Health Coach, Finance Guardian, Habit Builder, Journal Keeper, Self-Care Companion, Relationship Manager, Travel Planner
 
-Inspired by the J.A.R.V.I.S build you showed me. Built exactly to your vision.
+**Intelligence & Proactivity (7)**
+Scout, Analyst, Proactive Sentinel, Opportunity Finder, Decision Support, Simulation Analyst, Knowledge Synthesizer
 
-Ready for the next iteration whenever you are.
+**Creation & Projects (7)**
+Forge, Creator, Designer, Creative Director, Ideation Partner, Project Manager, Personal Branding
+
+**Learning & Growth (5)**
+Learning Partner, Goal Tracker, Data Analyst, Knowledge Curator, Future Self
+
+**System & OS Layer (7)**
+Guardian, Performance Monitor, Error Recovery, Backup & Sync, Notification Manager, Context Switcher, Multi-Modal Coordinator
+
+**Ethics, Architecture & Meta (4)**
+Ethics Board, System Architect, Emotional Intelligence, Legal & Compliance (light guidance only)
+
+This gives Sierra an incredibly rich internal team while keeping everything routed safely through Director + Sentinel.
+
+The system is designed to feel like a true personal operating system.
+
+Pull the latest and enjoy the expanded power.
