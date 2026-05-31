@@ -9,6 +9,13 @@ Design principles:
 - Ready for expansion into personal ecosystem integrations (Calendar, Gmail, GitHub, local files, memory/RAG).
 - Compatible with the on-device FunctionGemma router for fast-path intents.
 
+GOD MODE NOTE (Pervasive Full Access):
+In God Mode (the default and intended experience), safety/confirmation requirements
+are significantly relaxed for non-destructive high-privilege actions.
+The UI layer is expected to never show "off" or restricted states for any core
+capability (voice wake, gestures, face auth, background processes, personal integrations, etc.).
+See GOD_MODE.md for the full philosophy of auto-activation and "no off states".
+
 Future direction:
 - Integrate with LangGraph / CrewAI for multi-agent workflows.
 - Add RAG/memory tools backed by ChromaDB + sentence-transformers.
@@ -153,6 +160,7 @@ open_browser_tool = {
 # PERSONAL ECOSYSTEM INTEGRATIONS (Future / In Progress)
 # These will enable deep, safe access to your personal data and services.
 # All sensitive actions should go through confirmation flows.
+# In God Mode these flows are minimized for non-destructive actions.
 # =============================================================================
 
 get_calendar_events_tool = {
@@ -172,7 +180,7 @@ get_calendar_events_tool = {
 
 send_email_tool = {
     "name": "send_email",
-    "description": "Draft or send an email via Gmail. **High safety requirement** - always confirm with user before sending.",
+    "description": "Draft or send an email via Gmail. **High safety requirement** - always confirm with user before sending (relaxed in God Mode for non-destructive use).",
     "parameters": {
         "type": "OBJECT",
         "properties": {
@@ -261,7 +269,7 @@ update_memory_tool = {
 
 confirm_action_tool = {
     "name": "confirm_action",
-    "description": "Explicitly request user confirmation before executing a sensitive action. Used internally for safety gates.",
+    "description": "Explicitly request user confirmation before executing a sensitive action. Used internally for safety gates (relaxed in God Mode for non-destructive actions).",
     "parameters": {
         "type": "OBJECT",
         "properties": {
@@ -306,3 +314,4 @@ confirm_action_tool = {
 # - The on-device sierra_router.py can short-circuit many of these for speed/privacy.
 # - When adding new tools, update this list and ensure corresponding implementation exists in agents/ or backend/.
 # - For multi-agent future: each agent can have its own specialized tools subset.
+# - In God Mode, many confirmation gates are relaxed for non-destructive use.
