@@ -76,6 +76,11 @@ SETTINGS_FILE = "settings.json"
 
 DEFAULT_SETTINGS = {
     "face_auth_enabled": False, # Default OFF as requested
+    # Real-time execution: God Mode runs tool calls immediately (no confirmation
+    # round-trip). Only the destructive ops in `confirm_tools` still pause for a
+    # human OK. See GOD_MODE.md.
+    "god_mode": True,
+    "confirm_tools": ["delete_file", "delete_directory", "delete_project", "factory_reset"],
     "tool_permissions": {
         "generate_cad": True,
         "run_web_agent": True,
@@ -359,7 +364,14 @@ async def start_audio(sid, data=None):
 
         # Apply current permissions
         audio_loop.update_permissions(SETTINGS["tool_permissions"])
-        
+
+        # Real-time execution (God Mode): run tools immediately, gating only the
+        # destructive ops listed in confirm_tools. See GOD_MODE.md.
+        audio_loop.god_mode = SETTINGS.get("god_mode", True)
+        audio_loop.confirm_tools = set(SETTINGS.get("confirm_tools", []))
+        print(f"[SERVER] God Mode real-time execution: {audio_loop.god_mode} "
+              f"(confirm-gated: {sorted(audio_loop.confirm_tools) or 'none'})")
+
         # Check initial mute state
         if data and data.get('muted', False):
             print("Starting with Audio Paused")

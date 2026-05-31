@@ -56,6 +56,19 @@ Run it for a clean start on permissions.
 - Truly destructive actions (recursive deletes, etc.) still have strong confirmation, even in God Mode.
 - The UI layer is designed to reflect full power at all times (no misleading "off" indicators).
 
+### Real-time execution (implemented)
+
+Tool calls now **execute the instant the model emits them** — no confirmation
+round-trip blocks the audio loop. This is wired in `backend/sierra.py`
+(`AudioLoop.god_mode` / `confirm_tools`) and configured in `backend/server.py`:
+
+- `settings.json` → `"god_mode": true` (default) runs every tool immediately.
+- `settings.json` → `"confirm_tools": [...]` is the only allow-list that still
+  pauses for an explicit OK — reserved for truly destructive ops
+  (`delete_file`, `delete_directory`, `delete_project`, `factory_reset`).
+- Set `"god_mode": false` to fall back to per-tool `tool_permissions`
+  (confirmation required by default).
+
 ## Implementation Notes (from Development Sessions)
 
 - Auto-force logic lives in the frontend UI layer and runs early but safely (onMount + timeout).
