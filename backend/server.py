@@ -307,6 +307,12 @@ async def start_audio(sid, data=None):
         print(f"Requesting confirmation for tool: {data.get('tool')}")
         asyncio.create_task(sio.emit('tool_confirmation_request', data))
 
+    # Callback for real-time tool execution (God Mode runs without confirmation).
+    def on_tool_execution(data):
+        # data = {"tool": str, "args": {...}, "status": "executing", "realtime": bool}
+        print(f"[SERVER] Real-time execute: {data.get('tool')} (realtime={data.get('realtime')})")
+        asyncio.create_task(sio.emit('tool_execution', data))
+
     # Callback to send CAD status to frontend
     def on_cad_status(status):
         # status can be: 
@@ -350,6 +356,7 @@ async def start_audio(sid, data=None):
             on_web_data=on_web_data,
             on_transcription=on_transcription,
             on_tool_confirmation=on_tool_confirmation,
+            on_tool_execution=on_tool_execution,
             on_cad_status=on_cad_status,
             on_cad_thought=on_cad_thought,
             on_project_update=on_project_update,

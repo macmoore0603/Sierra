@@ -119,6 +119,10 @@ final class SierraViewModel: ObservableObject {
         socket.onAudio = { [weak self] data in
             self?.audioPlayer.enqueue(data)
         }
+        socket.onToolExecution = { [weak self] tool, realtime in
+            let prefix = realtime ? "⚡️ Executing" : "⏳ Confirm"
+            self?.append(text: "\(prefix) \(tool)…", isUser: false, newBubble: true)
+        }
     }
 
     // MARK: Chat bubbles

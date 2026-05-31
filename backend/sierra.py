@@ -297,14 +297,15 @@ from kasa_agent import KasaAgent
 from printer_agent import PrinterAgent
 
 class AudioLoop:
-    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None):
+    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_tool_execution=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None):
         self.video_mode = video_mode
         self.on_audio_data = on_audio_data
         self.on_video_frame = on_video_frame
         self.on_cad_data = on_cad_data
         self.on_web_data = on_web_data
         self.on_transcription = on_transcription
-        self.on_tool_confirmation = on_tool_confirmation 
+        self.on_tool_confirmation = on_tool_confirmation
+        self.on_tool_execution = on_tool_execution
         self.on_cad_status = on_cad_status
         self.on_cad_thought = on_cad_thought
         self.on_project_update = on_project_update
@@ -871,7 +872,17 @@ class AudioLoop:
                                             f"callback configured; auto-allowing '{fc.name}'."
                                         )
 
-                                # If confirmed (or no callback configured, or auto-allowed), proceed
+                                # If confirmed (or no callback configured, or auto-allowed), proceed.
+                                # Surface real-time execution to clients so the user can
+                                # see Sierra act the instant a tool fires.
+                                if self.on_tool_execution:
+                                    self.on_tool_execution({
+                                        "tool": fc.name,
+                                        "args": dict(fc.args) if fc.args else {},
+                                        "status": "executing",
+                                        "realtime": not confirmation_required,
+                                    })
+
                                 if fc.name == "generate_cad":
                                     print(f"\n[Sierra DEBUG] --------------------------------------------------")
                                     print(f"[Sierra DEBUG] [TOOL] Tool Call Detected: 'generate_cad'")
