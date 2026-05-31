@@ -12,19 +12,42 @@ Sierra is built on the open-source [A.D.A V2](https://github.com/nazirlouis/ada_
 
 ---
 
+## 🌟 Sierra's Vision: The Ultimate Personal AI Agent
+
+**Goal**: Build the most powerful, capable, persistent, self-improving, voice-first, privacy-focused personal AI agent ever created.
+
+Sierra is evolving toward deep, configurable access to your personal ecosystem — Google Calendar, Gmail, local files, GitHub repos, notes, location context, and more — all protected by robust safety/confirmation mechanisms, multi-agent orchestration, advanced memory/RAG systems, tool integrations, proactive behaviors, and self-improvement loops.
+
+This repo is the living codebase for that vision. Every update brings us closer to a truly personal, reliable, and delightful AI companion that *just works* for you.
+
+---
+
+## 🚀 Recent Improvements
+
+- Enhanced voice dependency setup and troubleshooting (PyAudio, microphone permissions, model fallbacks)
+- Improved .env handling and beginner-friendly quick start
+- Backend robustness and import fixes across multiple dev branches
+- Expanded printer support and mDNS discovery
+- Continued refinement of the on-device FunctionGemma router for lower latency and better privacy
+
+> The project is under active iterative development. Check the `devin/*` branches for the latest experimental work.
+
+---
+
 ## 🌟 Capabilities at a Glance
 
 | Feature | Description | Technology |
 |---------|-------------|------------|
 | **🗣️ Low-Latency Voice** | Real-time conversation with interrupt handling | Gemini 2.5 Native Audio |
 | **⚡ On-device Router** | 270M-param FunctionGemma classifies intents locally before forwarding to Gemini | `Mac7Moore/ada_model` LoRA → `functiongemma-270m-it` |
-| **🧊 Parametric CAD** | Editable 3D model generation from voice prompts | `build123d` → STL |
-| **🖨️ 3D Printing** | Slicing and wireless print job submission | OrcaSlicer + Moonraker/OctoPrint |
+| **🧬 Parametric CAD** | Editable 3D model generation from voice prompts | `build123d` → STL |
+| **🔌 3D Printing** | Slicing and wireless print job submission | OrcaSlicer + Moonraker/OctoPrint |
 | **🖐️ Minority Report UI** | Gesture-controlled window manipulation | MediaPipe Hand Tracking |
 | **👁️ Face Authentication** | Secure local biometric login | MediaPipe Face Landmarker |
 | **🌐 Web Agent** | Autonomous browser automation | Playwright + Chromium |
 | **🏠 Smart Home** | Voice control for TP-Link Kasa devices | `python-kasa` |
 | **📁 Project Memory** | Persistent context across sessions | File-based JSON storage |
+| **🛡️ Safety & Confirmations** | User approval gates for sensitive actions (CAD, web, file writes) | settings.json + UI prompts |
 
 ### 🖐️ Gesture Control Details
 
@@ -61,6 +84,7 @@ graph TB
         KASA[kasa_agent.py<br/>Smart Home]
         AUTH[authenticator.py<br/>MediaPipe Face Auth]
         PM[project_manager.py<br/>Project Context]
+        AGENTS[agents/ <br/>Future multi-agent orchestration]
     end
     
     UI --> SOCKET_C
@@ -231,7 +255,7 @@ The system creates a `settings.json` file on first run. You can modify this to c
 
 ---
 
-### 5. 🖨️ 3D Printer Setup
+### 5. 🔌 3D Printer Setup
 Sierra V2 can slice STL files and send them directly to your 3D printer.
 
 **Supported Hardware:**
@@ -264,7 +288,7 @@ Sierra uses Google's Gemini API for voice and intelligence. You need a free API 
    cp .env.example .env
    ```
 5. Open `.env` in your editor and replace `your_api_key_here` with the key you copied:
-   ```
+   ```bash
    GEMINI_API_KEY=AIzaSy...
    ```
 6. Save the file.
@@ -287,8 +311,7 @@ Sierra's real-time voice features rely on **PyAudio** and a working microphone. 
 
 2. **Grant Microphone Permission**:
    - Open **System Settings → Privacy & Security → Microphone**.
-   - Enable access for your terminal app (Terminal, iTerm2, VS Code, etc.).
-   - If you are running Sierra via Electron, you may also need to allow the Electron app itself.
+   - Enable access for your terminal app (Terminal, iTerm2, VS Code, etc.).n   - If you are running Sierra via Electron, you may also need to allow the Electron app itself.
    - **Restart your terminal** after granting permission.
 
 3. **Verify PyAudio installation**:
@@ -367,7 +390,7 @@ npm run dev
 - "Make the light [Color]"
 - "Pause audio" / "Stop audio"
 
-### 🧊 3D CAD
+### 🧬 3D CAD
 - **Prompt**: "Create a 3D model of a hex bolt."
 - **Iterate**: "Make the head thinner." (Requires previous context)
 - **Files**: Saves to `projects/[ProjectName]/output.stl`.
@@ -376,7 +399,7 @@ npm run dev
 - **Prompt**: "Go to Amazon and find a USB-C cable under $10."
 - **Note**: The agent will auto-scroll, click, and type. Do not interfere with the browser window while it runs.
 
-### 🖨️ Printing & Slicing
+### 🔌 Printing & Slicing
 - **Auto-Discovery**: Sierra automatically finds printers on your network.
 - **Slicing**: Click "Slice & Print" on any generated 3D model.
 - **Profiles**: Sierra intelligently selects the correct OrcaSlicer profile based on your printer's name (e.g., "Creality K1").
@@ -412,7 +435,7 @@ npm run dev
 1. Check the **terminal/console** for error messages — Sierra now surfaces connection errors in the UI and logs.
 2. The most common cause is a **deprecated Gemini model**. Google rotates preview models every few months.
    - Open your `.env` file and add or update `GEMINI_MODEL` with a current model name:
-     ```
+     ```bash
      GEMINI_MODEL=models/gemini-2.5-flash-native-audio-latest
      ```
    - Check [Google's model list](https://ai.google.dev/gemini-api/docs/models) for the latest native-audio model.
@@ -433,6 +456,8 @@ This is a server-side issue from the Gemini API. Simply reconnect by clicking th
 
 *Coming soon! Screenshots and demo videos will be added here.*
 
+**In the meantime**: The UI features a clean Electron + React interface with draggable/resizable windows, real-time gesture overlay, 3D STL viewer, printer status, and a persistent router status pill.
+
 ---
 
 ## 📂 Project Structure
@@ -440,16 +465,17 @@ This is a server-side issue from the Gemini API. Simply reconnect by clicking th
 ```
 sierra/
 ├── backend/                    # Python server & AI logic
+│   ├── agents/                 # (Future) Multi-agent orchestration modules
+│   ├── authenticator.py        # MediaPipe face auth logic
+│   ├── cad_agent.py            # CAD generation orchestrator
+│   ├── kasa_agent.py           # TP-Link smart home control
+│   ├── printer_agent.py        # 3D printer discovery & slicing
+│   ├── project_manager.py      # Project context management
+│   ├── server.py               # FastAPI + Socket.IO server
 │   ├── sierra.py               # Gemini Live API integration
 │   ├── sierra_router.py        # On-device FunctionGemma router
-│   ├── server.py               # FastAPI + Socket.IO server
-│   ├── cad_agent.py            # CAD generation orchestrator
-│   ├── printer_agent.py        # 3D printer discovery & slicing
-│   ├── web_agent.py            # Playwright browser automation
-│   ├── kasa_agent.py           # TP-Link smart home control
-│   ├── authenticator.py        # MediaPipe face auth logic
-│   ├── project_manager.py      # Project context management
 │   ├── tools.py                # Tool definitions for Gemini
+│   ├── web_agent.py            # Playwright browser automation
 │   └── reference.jpg           # Your face photo (add this!)
 ├── src/                        # React frontend
 │   ├── App.jsx                 # Main application component
