@@ -30,11 +30,98 @@ SEND_SAMPLE_RATE = 16000
 RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE = 1024
 
-MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
+# Use the "-latest" alias so we track model rotations automatically.
+# Override via GEMINI_MODEL in .env if needed.
+MODEL = os.getenv(
+    "GEMINI_MODEL",
+    "models/gemini-2.5-flash-native-audio-latest",
+)
 DEFAULT_MODE = "camera"
 
-load_dotenv()
-client = genai.Client(http_options={"api_version": "v1beta"}, api_key=os.getenv("GEMINI_API_KEY"))
+
+class ConfigurationError(Exception):
+    """Raised when .env or GEMINI_API_KEY is missing / invalid."""
+
+
+def _validate_environment():
+    """Check that the .env file exists and contains a usable GEMINI_API_KEY.
+
+    Returns the API key string on success.  On failure it prints an
+    actionable message **and** raises `EnvironmentError` so the caller
+    can decide how to handle it (the server stays alive and can report
+    the problem to the frontend instead of crashing silently).
+    """  # noqa: E501
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, ".env")
+    env_path = os.path.normpath(env_path)
+
+    if not os.path.isfile(env_path):
+        msg = (
+            f".env file not found at {env_path}. "
+            "Run: cp .env.example .env  then add your Gemini API key. "
+            "Get a free key at https://aistudio.google.com/app/apikey"
+        )
+        print(
+            "\n"
+            "========================================================\n"
+            " ERROR: .env file not found!\n"
+            "========================================================\n"
+            f" Expected location: {env_path}\n"
+            "\n"
+            " Quick fix:\n"
+            "   cp .env.example .env\n"
+            "   # then open .env and paste your Gemini API key.\n"
+            "\n"
+            " Get a free key at:\n"
+            "   https://aistudio.google.com/app/apikey\n"
+            "========================================================\n"
+        )
+        raise ConfigurationError(msg)
+
+    load_dotenv(dotenv_path=env_path)
+    api_key = os.getenv("GEMINI_API_KEY")
+
+    if not api_key or api_key.strip() in ("", "your_api_key_here", "your_key_here"):
+        msg = (
+            "GEMINI_API_KEY is missing or still set to the placeholder. "
+            "Open .env and replace the placeholder with your real key. "
+            "Get a free key at https://aistudio.google.com/app/apikey"
+        )
+        print(
+            "\n"
+            "========================================================\n"
+            " ERROR: GEMINI_API_KEY is missing or still set to the\n"
+            "        placeholder value.\n"
+            "========================================================\n"
+            f" .env location: {env_path}\n"
+            "\n"
+            " Open your .env file and replace the placeholder with\n"
+            " your real key:\n"
+            "   GEMINI_API_KEY=AIzaSy...\n"
+            "\n"
+            " Get a free key at:\n"
+            "   https://aistudio.google.com/app/apikey\n"
+            "========================================================\n"
+        )
+        raise ConfigurationError(msg)
+
+    return api_key
+
+
+# Validate at import time but allow the server to keep running so it can
+# report the error to the frontend instead of crashing before it starts.
+try:
+    _gemini_api_key = _validate_environment()
+except ConfigurationError:
+    _gemini_api_key = None
+
+client = (
+    genai.Client(
+        http_options={"api_version": "v1beta"},
+        api_key=_gemini_api_key,
+    )
+    if _gemini_api_key
+    else None
+)
 
 # Function definitions
 generate_cad = {
@@ -1165,12 +1252,27 @@ class AudioLoop:
          pass
 
     async def run(self, start_message=None):
+        if client is None:
+            msg = (
+                "Cannot start voice — Gemini API client is not configured. "
+                "Create a .env file with your GEMINI_API_KEY. "
+                "Get a free key at https://aistudio.google.com/app/apikey"
+            )
+            print(f"[Sierra DEBUG] [FATAL] {msg}")
+            if self.on_error:
+                self.on_error(msg)
+            return
+
         retry_delay = 1
         is_reconnect = False
+        max_retries = 5
+        attempt = 0
         
         while not self.stop_event.is_set():
+            attempt += 1
             try:
-                print(f"[Sierra DEBUG] [CONNECT] Connecting to Gemini Live API...")
+                print(f"[Sierra DEBUG] [CONNECT] Connecting to Gemini Live API (attempt {attempt})...")
+                print(f"[Sierra DEBUG] [CONNECT] Model: {MODEL}")
                 async with (
                     client.aio.live.connect(model=MODEL, config=config) as session,
                     asyncio.TaskGroup() as tg,
@@ -1219,8 +1321,9 @@ class AudioLoop:
                         print(f"[Sierra DEBUG] [RECONNECT] Sending restoration context to model...")
                         await self.session.send(input=context_msg, end_of_turn=True)
 
-                    # Reset retry delay on successful connection
+                    # Reset retry state on successful connection
                     retry_delay = 1
+                    attempt = 0
                     
                     # Wait until stop event, or until the session task group exits (which happens on error)
                     # Actually, the TaskGroup context manager will exit if any tasks fail/cancel.
@@ -1241,15 +1344,76 @@ class AudioLoop:
                 
             except Exception as e:
                 # This catches the ExceptionGroup from TaskGroup or direct exceptions
+                error_str = str(e).lower()
                 print(f"[Sierra DEBUG] [ERR] Connection Error: {e}")
-                
+
+                # Detect authentication / API-key errors and surface a clear message.
+                # Keep checks narrow to avoid matching unrelated errors
+                # (e.g. PyAudio "Invalid device", OS "Permission denied").
+                is_api_key_error = (
+                    "api key" in error_str
+                    or "api_key" in error_str
+                    or "401" in error_str
+                    or "403" in error_str
+                    or "unauthenticated" in error_str
+                    or "permission_denied" in error_str
+                    or "invalid api key" in error_str
+                )
+                if is_api_key_error:
+                    print(
+                        "\n"
+                        "========================================================\n"
+                        " ERROR: Gemini API rejected your key.\n"
+                        "========================================================\n"
+                        " Possible causes:\n"
+                        "   - The key in .env is incorrect or expired.\n"
+                        "   - The key does not have access to the model.\n"
+                        "\n"
+                        " Verify your key at:\n"
+                        "   https://aistudio.google.com/app/apikey\n"
+                        "========================================================\n"
+                    )
+                    if self.on_error:
+                        self.on_error(
+                            "Gemini API key error — check your .env file. "
+                            "Get a valid key at https://aistudio.google.com/app/apikey"
+                        )
+                    break
+
                 if self.stop_event.is_set():
                     break
-                
+
+                # Detect model-not-found / deprecated model errors
+                if "not found" in error_str or "404" in error_str or "does not exist" in error_str:
+                    msg = (
+                        f"Model '{MODEL}' not found — it may have been "
+                        f"deprecated by Google. Update GEMINI_MODEL in your "
+                        f".env file. See https://ai.google.dev/gemini-api/docs/models"
+                    )
+                    print(f"\n{'='*56}\n ERROR: {msg}\n{'='*56}")
+                    if self.on_error:
+                        self.on_error(msg)
+                    break
+
+                # Surface every connection error to the frontend so the user
+                # is not left staring at silence.
+                if self.on_error:
+                    self.on_error(f"Voice connection error (attempt {attempt}): {e}")
+
+                if attempt >= max_retries:
+                    fail_msg = (
+                        f"Failed to connect after {max_retries} attempts. "
+                        f"Last error: {e}"
+                    )
+                    print(f"[Sierra DEBUG] [FATAL] {fail_msg}")
+                    if self.on_error:
+                        self.on_error(fail_msg)
+                    break
+
                 print(f"[Sierra DEBUG] [RETRY] Reconnecting in {retry_delay} seconds...")
                 await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay * 2, 10) # Exponential backoff capped at 10s
-                is_reconnect = True # Next loop will be a reconnect
+                retry_delay = min(retry_delay * 2, 10)
+                is_reconnect = True
                 
             finally:
                 # Cleanup before retry

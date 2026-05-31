@@ -311,15 +311,24 @@ async def start_audio(sid, data=None):
         print("Creating asyncio task for AudioLoop.run()")
         loop_task = asyncio.create_task(audio_loop.run())
         
-        # Add a done callback to catch silent failures in the loop
+        # Notify frontend when the audio loop exits (crash, API error, etc.)
         def handle_loop_exit(task):
+            global audio_loop
             try:
                 task.result()
             except asyncio.CancelledError:
                 print("Audio Loop Cancelled")
             except Exception as e:
                 print(f"Audio Loop Crashed: {e}")
-                # You could emit 'error' here if you have context
+                asyncio.ensure_future(
+                    sio.emit('error', {'msg': f"Voice connection lost: {e}"})
+                )
+            # Always tell the frontend Sierra stopped so the power button
+            # resets and the user isn't left staring at a "connected" state.
+            audio_loop = None
+            asyncio.ensure_future(
+                sio.emit('status', {'msg': 'Sierra Stopped'})
+            )
         
         loop_task.add_done_callback(handle_loop_exit)
         
