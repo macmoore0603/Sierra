@@ -314,13 +314,29 @@ struct ContentView: View {
                     }
                 }
 
-                ScrollView {
-                    LazyVStack(spacing: 20) {
-                        ForEach(vm.messages) { msg in
-                            ChatBubble(text: msg.text, isUser: msg.isUser)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 20) {
+                            ForEach(vm.messages) { msg in
+                                ChatBubble(text: msg.text, isUser: msg.isUser)
+                                    .id(msg.id)
+                            }
+                        }
+                        .padding(24)
+                    }
+                    // Keep the newest message in view as turns stream in.
+                    .onChange(of: vm.messages.last?.id) { _, _ in
+                        if let lastID = vm.messages.last?.id {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                proxy.scrollTo(lastID, anchor: .bottom)
+                            }
                         }
                     }
-                    .padding(24)
+                    .onChange(of: vm.messages.last?.text) { _, _ in
+                        if let lastID = vm.messages.last?.id {
+                            proxy.scrollTo(lastID, anchor: .bottom)
+                        }
+                    }
                 }
 
                 if !vm.liveTranscription.isEmpty {

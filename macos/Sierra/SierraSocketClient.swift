@@ -38,6 +38,9 @@ final class SierraSocketClient: NSObject, URLSessionWebSocketDelegate {
     private let url: URL
     private var task: URLSessionWebSocketTask?
     private var pendingStartAudio = false
+    private var shouldReconnect = true
+    private var reconnectAttempts = 0
+    private let maxReconnectDelay: Double = 30
     private lazy var session: URLSession = {
         URLSession(configuration: .default, delegate: self, delegateQueue: nil)
     }()
@@ -49,6 +52,7 @@ final class SierraSocketClient: NSObject, URLSessionWebSocketDelegate {
 
     // MARK: - Lifecycle
     func connect() {
+        shouldReconnect = true
         guard task == nil else { return }
         let t = session.webSocketTask(with: url)
         task = t
@@ -57,10 +61,24 @@ final class SierraSocketClient: NSObject, URLSessionWebSocketDelegate {
     }
 
     func disconnect() {
+        shouldReconnect = false       // stop auto-reconnecting
         sendRaw("41")                 // Socket.IO DISCONNECT
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
         setConnected(false)
+    }
+
+    /// Reconnect after a capped exponential backoff, so the real-time link is
+    /// always-on (God Mode) and survives a backend restart.
+    private func scheduleReconnect() {
+        guard shouldReconnect else { return }
+        let delay = min(maxReconnectDelay, pow(2.0, Double(reconnectAttempts)))
+        reconnectAttempts += 1
+        deliver { $0.onStatus?(String(format: "Reconnecting in %.0fs…", delay)) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.shouldReconnect, self.task == nil else { return }
+            self.connect()
+        }
     }
 
     // MARK: - High-level API
@@ -102,6 +120,7 @@ final class SierraSocketClient: NSObject, URLSessionWebSocketDelegate {
                 self.deliver { $0.onError?("socket closed: \(err.localizedDescription)") }
                 self.setConnected(false)
                 self.task = nil
+                self.scheduleReconnect()
             case .success(let message):
                 switch message {
                 case .string(let text): self.handleEngineIO(text)
@@ -132,6 +151,7 @@ final class SierraSocketClient: NSObject, URLSessionWebSocketDelegate {
         let body = String(packet.dropFirst())
         switch type {
         case "0":                                // CONNECT (handshake complete)
+            reconnectAttempts = 0                // healthy link — reset backoff
             setConnected(true)
             if pendingStartAudio { pendingStartAudio = false; startAudio() }
         case "1": setConnected(false)            // DISCONNECT
