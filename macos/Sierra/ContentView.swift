@@ -284,6 +284,7 @@ struct ContentView: View {
             Theme.backdrop.ignoresSafeArea()
             VStack(spacing: 0) {
                 header
+                hudBar
                 tabBar
                 Rectangle().fill(Theme.gold.opacity(0.18)).frame(height: 1)
                 content
@@ -311,6 +312,18 @@ struct ContentView: View {
         .padding(.horizontal, 26)
         .padding(.vertical, 16)
         .background(Theme.bg0.opacity(0.55))
+    }
+
+    private var hudBar: some View {
+        HStack(spacing: 16) {
+            StatusPills(connected: vm.isConnected, listening: vm.isListening)
+            Spacer(minLength: 12)
+            TopAudioBar(active: vm.isListening)
+                .frame(width: 240)
+                .opacity(0.9)
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 12)
     }
 
     private var tabBar: some View {
