@@ -1,12 +1,18 @@
 # Sierra — Native macOS App
 
 A native SwiftUI/AppKit menu-bar build of Sierra. It runs as a status-bar app
-("✨" icon), shows the Arc Reactor UI, listens for the **"Hey Sierra"** wake word
-via on-device speech recognition, and talks to the Sierra backend at
-`http://localhost:8000/chat`.
+("✨" icon), shows the Arc Reactor / JARVIS HUD UI, listens for the **"Hey Sierra"** wake word
+via on-device speech recognition, and can connect to the Sierra daemon.
 
-This is the native counterpart to the Electron app — the shipped binary is
-`Sierra.app.zip` at the repo root.
+**Primary production daemon**: the Python one at `http://localhost:8785` (or LAN 0.0.0.0:8785)
+started via `./run-sierra.sh --24-7` or the `com.sierra.pilot` launchd agent (KeepAlive).
+This daemon includes the full God Mode orchestrator, Life OS (8 areas), 16+ plugins,
+and 24/7 background operation.
+
+The native Swift app is a first-class full-access native client alongside the
+Tauri Arc Reactor (default hero view) and the mobile PWA. The Swift client can be
+updated to point at the real daemon (SierraSocketClient + the JSON-RPC endpoints
+on 8785). The shipped binary is `Sierra.app.zip` at the repo root.
 
 ## Files
 
@@ -65,19 +71,42 @@ opens a live **Socket.IO** session to the backend (`SierraSocketClient`):
 The client speaks Engine.IO v4 / Socket.IO v5 directly over
 `URLSessionWebSocketTask` — **no third-party packages**, nothing to add in Xcode.
 
-**Text.** Typed messages use `http://localhost:8000/chat`
-(`POST {"message": ...}` → `{"response": ...}`), served by
-[`backend/server.py`](../backend/server.py) and backed by Gemini text generation.
-Set `GEMINI_API_KEY` (and optionally `GEMINI_TEXT_MODEL`, default
-`gemini-2.5-flash`) in the backend `.env`.
+**Text.** Typed messages can use the real Sierra daemon JSON-RPC / HTTP endpoints
+on port 8785 (the same ones the Tauri UI and mobile PWA use). The daemon
+(`daemon/pilot/server.py`) supports the full Life OS, plugins, God Mode, and
+orchestrator. See `daemon/pilot/server.py` and the Tauri UI API client for the
+current endpoints.
 
-## Building
+## Building & Running (Current Architecture)
 
-Open the `Sierra/` sources in Xcode (macOS target), or add them to the existing
-Xcode project, then build and run. Start the backend first:
+1. Start the real 24/7 Sierra daemon (recommended):
 
 ```bash
-pip install -r requirements.txt          # from repo root
-echo "GEMINI_API_KEY=AIza..." > .env
-python backend/server.py                  # serves http://localhost:8000
+cd /Users/user/Sierra   # or your clone
+./run-sierra.sh --24-7
+# or for pure background:
+launchctl load -w ~/Library/LaunchAgents/com.sierra.pilot.plist
 ```
+
+This gives you the full God Mode + Life OS + plugins on 8785.
+
+2. Open `macos/Sierra/` (or the Xcode project that contains it) and build the
+native app target.
+
+3. The native app will then have the complete "give Sierra access to everything"
+entitlements + privacy strings. Run the permissions helper once:
+
+```bash
+bash scripts/macos-activate-permissions.sh
+```
+
+Then drag the two canonical paths into every Privacy & Security pane:
+- `/Applications/Sierra.app`
+- The venv Python: `.../Sierra/daemon/.venv/bin/python`
+
+After grants, the native HUD + the Tauri Arc Reactor (primary) will both be in
+full God Mode with no artificial "off" states.
+
+See the root `README.md`, `GOD_MODE.md`, `LIFE_AREAS.md`, and `daemon/pilot/`
+for the current architecture. The Swift client is the native menu-bar / status-bar
+experience; the Tauri Arc Reactor is the default immersive hero view.
