@@ -165,7 +165,8 @@ class TestRouteResult:
         )
         d = r.to_dict()
         assert set(d.keys()) == {
-            "function", "arguments", "confidence", "latency_ms", "is_fallback"
+            "function", "arguments", "confidence", "latency_ms",
+            "is_fallback", "engine",
         }
         assert d["function"] == "set_timer"
         assert d["arguments"] == {"duration": "5m"}
@@ -179,11 +180,12 @@ class TestRouteResult:
 
 class TestRouterSingletonSafety:
     def test_get_router_returns_none_when_model_unavailable(self, monkeypatch):
-        """If the model can't be loaded, ``get_router`` must return ``None``
-        (not raise) so the rest of Sierra keeps working."""
+        """If the model can't be loaded and no Groq key is set, ``get_router``
+        must return ``None`` (not raise) so the rest of Sierra keeps working."""
         # Reset any cached state from earlier tests
         monkeypatch.setattr(sierra_router, "_router_singleton", None)
         monkeypatch.setattr(sierra_router, "_router_error", None)
+        monkeypatch.delenv("GROQ_API_KEY", raising=False)
 
         def boom(*args, **kwargs):
             raise RuntimeError("simulated: no internet / no torch")
@@ -193,3 +195,116 @@ class TestRouterSingletonSafety:
         assert sierra_router.get_router() is None
         # Second call uses the cached failure path and must also return None.
         assert sierra_router.get_router() is None
+
+
+# ---------------------------------------------------------------------------
+# Groq cloud fallback router
+# ---------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    def __init__(self, payload, status_code=200):
+        self._payload = payload
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self):
+        return self._payload
+
+
+class _FakeRequests:
+    """Minimal stand-in for the ``requests`` module used by GroqRouter."""
+
+    def __init__(self, message=None, response=None):
+        self._message = message
+        self._response = response
+        self.last_payload = None
+
+    def post(self, url, headers=None, json=None, timeout=None):
+        self.last_payload = json
+        if self._response is not None:
+            return self._response
+        return _FakeResponse({"choices": [{"message": self._message}]})
+
+
+class TestGroqRouter:
+    def test_requires_api_key(self, monkeypatch):
+        monkeypatch.delenv("GROQ_API_KEY", raising=False)
+        with pytest.raises(RuntimeError):
+            sierra_router.GroqRouter()
+
+    def test_routes_tool_call(self, monkeypatch):
+        router = sierra_router.GroqRouter(api_key="test-key")
+        router._requests = _FakeRequests(
+            {
+                "tool_calls": [
+                    {
+                        "function": {
+                            "name": "set_timer",
+                            "arguments": '{"duration": "5 minutes"}',
+                        }
+                    }
+                ]
+            }
+        )
+
+        result = router.route("set a timer for 5 minutes")
+        assert result.function == "set_timer"
+        assert result.arguments == {"duration": "5 minutes"}
+        assert result.engine == "groq"
+        assert result.confidence >= 0.55
+        # The Sierra tool catalogue must be forwarded to Groq.
+        assert router._requests.last_payload["tools"] == sierra_router.SIERRA_TOOLS
+
+    def test_direct_reply_falls_back_to_chat(self, monkeypatch):
+        router = sierra_router.GroqRouter(api_key="test-key")
+        router._requests = _FakeRequests({"content": "Hello there!"})
+
+        result = router.route("how are you?")
+        assert result.function == "chat"
+        assert result.arguments == {"prompt": "how are you?"}
+        assert result.is_fallback is True
+
+    def test_unknown_tool_name_falls_back_to_chat(self, monkeypatch):
+        router = sierra_router.GroqRouter(api_key="test-key")
+        router._requests = _FakeRequests(
+            {"tool_calls": [{"function": {"name": "nope", "arguments": "{}"}}]}
+        )
+
+        result = router.route("do something weird")
+        assert result.function == "chat"
+
+    def test_recovers_from_tool_use_failed(self, monkeypatch):
+        """Groq sometimes returns a 400 with the intended call in
+        `failed_generation`; the router should recover it, not crash."""
+        router = sierra_router.GroqRouter(api_key="test-key")
+        failed = _FakeResponse(
+            {
+                "error": {
+                    "code": "tool_use_failed",
+                    "failed_generation": (
+                        '<function=web_search{"query": "weather in Boston"}'
+                        "</function>"
+                    ),
+                }
+            },
+            status_code=400,
+        )
+        router._requests = _FakeRequests(response=failed)
+
+        result = router.route("what's the weather in Boston?")
+        assert result.function == "web_search"
+        assert result.arguments == {"query": "weather in Boston"}
+        assert result.engine == "groq"
+
+    def test_engine_override_selects_groq(self, monkeypatch):
+        monkeypatch.setattr(sierra_router, "_router_singleton", None)
+        monkeypatch.setattr(sierra_router, "_router_error", None)
+        monkeypatch.setattr(sierra_router, "ROUTER_ENGINE", "groq")
+        monkeypatch.setenv("GROQ_API_KEY", "test-key")
+
+        router = sierra_router.get_router()
+        assert isinstance(router, sierra_router.GroqRouter)

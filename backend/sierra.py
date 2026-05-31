@@ -5,10 +5,25 @@ import os
 import sys
 import traceback
 from dotenv import load_dotenv
-import cv2
-import pyaudio
-import PIL.Image
-import mss
+
+# Heavy multimodal dependencies are optional: they require system libraries and
+# are only needed for the live camera/audio loop, not for importing tool schemas.
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+try:
+    import pyaudio
+except ImportError:
+    pyaudio = None
+try:
+    import PIL.Image
+except ImportError:
+    PIL = None
+try:
+    import mss
+except ImportError:
+    mss = None
 import argparse
 import math
 import struct
@@ -24,7 +39,7 @@ if sys.version_info < (3, 11, 0):
 
 from tools import tools_list
 
-FORMAT = pyaudio.paInt16
+FORMAT = pyaudio.paInt16 if pyaudio else None
 CHANNELS = 1
 SEND_SAMPLE_RATE = 16000
 RECEIVE_SAMPLE_RATE = 24000
@@ -34,7 +49,13 @@ MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
 DEFAULT_MODE = "camera"
 
 load_dotenv()
-client = genai.Client(http_options={"api_version": "v1beta"}, api_key=os.getenv("GEMINI_API_KEY"))
+# Build the Gemini Live client lazily: importing this module (e.g. for tool
+# schemas) must not require a key. The live loop checks for it in run().
+client = (
+    genai.Client(http_options={"api_version": "v1beta"}, api_key=os.getenv("GEMINI_API_KEY"))
+    if os.getenv("GEMINI_API_KEY")
+    else None
+)
 
 # Function definitions
 generate_cad = {
@@ -202,7 +223,7 @@ config = types.LiveConnectConfig(
     )
 )
 
-pya = pyaudio.PyAudio()
+pya = pyaudio.PyAudio() if pyaudio else None
 
 from cad_agent import CadAgent
 from web_agent import WebAgent
@@ -1165,6 +1186,10 @@ class AudioLoop:
          pass
 
     async def run(self, start_message=None):
+        if client is None:
+            raise RuntimeError(
+                "The Gemini Live loop requires GEMINI_API_KEY to be set."
+            )
         retry_delay = 1
         is_reconnect = False
         
@@ -1260,6 +1285,11 @@ class AudioLoop:
                         pass
 
 def get_input_devices():
+    if pyaudio is None:
+        raise RuntimeError(
+            "Audio device enumeration requires the 'pyaudio' package. "
+            "Install it with `pip install pyaudio`."
+        )
     p = pyaudio.PyAudio()
     info = p.get_host_api_info_by_index(0)
     numdevices = info.get('deviceCount')
@@ -1271,6 +1301,11 @@ def get_input_devices():
     return devices
 
 def get_output_devices():
+    if pyaudio is None:
+        raise RuntimeError(
+            "Audio device enumeration requires the 'pyaudio' package. "
+            "Install it with `pip install pyaudio`."
+        )
     p = pyaudio.PyAudio()
     info = p.get_host_api_info_by_index(0)
     numdevices = info.get('deviceCount')

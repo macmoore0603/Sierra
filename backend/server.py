@@ -154,29 +154,33 @@ async def connect(sid, environ):
     async def on_auth_frame(frame_b64):
         await sio.emit('auth_frame', {'image': frame_b64})
 
-    # Initialize Authenticator if not already done
-    if authenticator is None:
-        authenticator = FaceAuthenticator(
-            reference_image_path="reference.jpg",
-            on_status_change=on_auth_status,
-            on_frame=on_auth_frame
-        )
-    
-    # Check if already authenticated or needs to start
-    if authenticator.authenticated:
-        await sio.emit('auth_status', {'authenticated': True})
-    else:
-        # Check Settings for Auth
-        if SETTINGS.get("face_auth_enabled", False):
+    # Only build the FaceAuthenticator when face auth is actually enabled --
+    # it depends on mediapipe/opencv, which are optional. If those deps are
+    # missing (or it otherwise fails to initialize) we degrade to auto-auth so
+    # the rest of Sierra keeps working headlessly.
+    if SETTINGS.get("face_auth_enabled", False):
+        if authenticator is None:
+            try:
+                authenticator = FaceAuthenticator(
+                    reference_image_path="reference.jpg",
+                    on_status_change=on_auth_status,
+                    on_frame=on_auth_frame
+                )
+            except Exception as e:
+                print(f"[SERVER] Face auth unavailable ({e}); auto-authenticating.")
+                await sio.emit('auth_status', {'authenticated': True})
+                return
+
+        if authenticator.authenticated:
+            await sio.emit('auth_status', {'authenticated': True})
+        else:
             await sio.emit('auth_status', {'authenticated': False})
             # Start the auth loop in background
             asyncio.create_task(authenticator.start_authentication_loop())
-        else:
-            # Bypass Auth
-            print("Face Auth Disabled. Auto-authenticating.")
-            # We don't change authenticator state to true to avoid confusion if re-enabled? 
-            # Or we should just tell client it's auth'd.
-            await sio.emit('auth_status', {'authenticated': True})
+    else:
+        # Bypass Auth
+        print("Face Auth Disabled. Auto-authenticating.")
+        await sio.emit('auth_status', {'authenticated': True})
 
 @sio.event
 async def disconnect(sid):

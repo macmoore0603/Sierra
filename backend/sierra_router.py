@@ -98,6 +98,21 @@ DEFAULT_CONFIDENCE_THRESHOLD = float(
     os.environ.get("SIERRA_ROUTER_THRESHOLD", "0.55")
 )
 
+# Which engine backs the router:
+#   "auto"  -> try the local FunctionGemma adapter, fall back to Groq if it
+#              can't load and GROQ_API_KEY is set.
+#   "local" -> only the on-device adapter.
+#   "groq"  -> skip the local model entirely and route via Groq.
+ROUTER_ENGINE = os.environ.get("SIERRA_ROUTER_ENGINE", "auto").lower()
+
+# Groq cloud fallback configuration (OpenAI-compatible API).
+GROQ_BASE_URL = os.environ.get(
+    "GROQ_BASE_URL", "https://api.groq.com/openai/v1"
+)
+GROQ_MODEL = os.environ.get(
+    "SIERRA_GROQ_MODEL", "llama-3.3-70b-versatile"
+)
+
 
 # ---------------------------------------------------------------------------
 # Tool catalogue exposed to the router
@@ -266,6 +281,7 @@ class RouteResult:
     confidence: float = 0.0
     latency_ms: float = 0.0
     raw_response: str = ""
+    engine: str = "local"
 
     @property
     def is_fallback(self) -> bool:
@@ -278,6 +294,7 @@ class RouteResult:
             "confidence": self.confidence,
             "latency_ms": self.latency_ms,
             "is_fallback": self.is_fallback,
+            "engine": self.engine,
         }
 
 
@@ -510,6 +527,176 @@ class SierraRouter:
 
 
 # ---------------------------------------------------------------------------
+# Groq cloud fallback router
+# ---------------------------------------------------------------------------
+
+
+class GroqRouter:
+    """Cloud router using Groq's OpenAI-compatible function calling.
+
+    A drop-in replacement for :class:`SierraRouter` (same ``route`` signature
+    and :class:`RouteResult` output) for when the local FunctionGemma adapter
+    can't be loaded but a ``GROQ_API_KEY`` is configured. Groq's LPU inference
+    keeps latency low enough for "instant" command routing.
+    """
+
+    engine = "groq"
+
+    _SYSTEM = (
+        "You are Sierra's command router. Choose exactly one tool that best "
+        "matches the user's intent. Use the `chat` tool for anything "
+        "conversational, multimodal, or that doesn't fit another tool."
+    )
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = GROQ_MODEL,
+        base_url: str = GROQ_BASE_URL,
+    ) -> None:
+        # Deferred so importing this module never requires `requests`.
+        try:
+            import requests  # type: ignore
+        except ImportError as exc:  # pragma: no cover - depends on env
+            raise RuntimeError(
+                "GroqRouter requires the `requests` package."
+            ) from exc
+
+        self._requests = requests
+        self.api_key = api_key or os.environ.get("GROQ_API_KEY")
+        if not self.api_key:
+            raise RuntimeError("GroqRouter requires GROQ_API_KEY to be set.")
+        self.model = model
+        self.base_url = base_url.rstrip("/")
+        logger.info("Sierra router using Groq cloud engine (model=%s)", self.model)
+
+    def route(
+        self,
+        user_text: str,
+        confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+    ) -> RouteResult:
+        """Classify ``user_text`` into a Sierra tool call via Groq."""
+
+        if not user_text or not user_text.strip():
+            return RouteResult(
+                function="chat", arguments={"prompt": ""}, engine=self.engine
+            )
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": self._SYSTEM},
+                {"role": "user", "content": user_text},
+            ],
+            "tools": SIERRA_TOOLS,
+            "tool_choice": "auto",
+            "temperature": 0,
+            "max_tokens": MAX_NEW_TOKENS,
+        }
+
+        t0 = time.time()
+        resp = self._requests.post(
+            f"{self.base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=30,
+        )
+        latency_ms = (time.time() - t0) * 1000.0
+
+        # Llama models on Groq occasionally emit a tool call in a format their
+        # server-side parser rejects (HTTP 400 `tool_use_failed`). The intended
+        # call is returned in `failed_generation`, so recover it instead of
+        # failing the whole route.
+        if resp.status_code == 400:
+            recovered = self._recover_failed_generation(resp, user_text, latency_ms)
+            if recovered is not None:
+                return recovered
+
+        resp.raise_for_status()
+
+        message = resp.json()["choices"][0]["message"]
+        tool_calls = message.get("tool_calls") or []
+
+        if tool_calls:
+            call = tool_calls[0].get("function", {})
+            name = call.get("name", "chat")
+            try:
+                args = json.loads(call.get("arguments") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                args = {}
+            if name not in VALID_FUNCTION_NAMES:
+                name, args = "chat", {"prompt": user_text}
+            if not isinstance(args, dict) or not args:
+                args = SierraRouter._default_args(name, user_text)
+            confidence = 0.9 if name != "chat" else 0.5
+            raw = json.dumps({"name": name, "arguments": args})
+        else:
+            # Model replied directly instead of calling a tool -> chat passthrough.
+            name = "chat"
+            args = {"prompt": user_text}
+            confidence = 0.3
+            raw = message.get("content") or ""
+
+        if confidence < confidence_threshold:
+            name = "chat"
+            args = {"prompt": user_text}
+
+        return RouteResult(
+            function=name,
+            arguments=args,
+            confidence=confidence,
+            latency_ms=latency_ms,
+            raw_response=raw,
+            engine=self.engine,
+        )
+
+    def _recover_failed_generation(
+        self, resp, user_text: str, latency_ms: float
+    ) -> Optional[RouteResult]:
+        """Recover a tool call from Groq's ``tool_use_failed`` (400) payload.
+
+        The malformed generation looks like
+        ``<function=web_search{"query": "..."}</function>``; parse the function
+        name + JSON args out of it. Returns ``None`` if this isn't a
+        recoverable ``tool_use_failed`` error.
+        """
+        try:
+            error = resp.json().get("error", {})
+        except ValueError:
+            return None
+        if error.get("code") != "tool_use_failed":
+            return None
+
+        generated = error.get("failed_generation", "") or ""
+        match = re.search(r"<function=(\w+)\s*(\{.*\})", generated, re.S)
+        if not match:
+            return None
+
+        name = match.group(1)
+        try:
+            args = json.loads(match.group(2))
+        except json.JSONDecodeError:
+            args = {}
+        if name not in VALID_FUNCTION_NAMES:
+            name, args = "chat", {"prompt": user_text}
+        if not isinstance(args, dict) or not args:
+            args = SierraRouter._default_args(name, user_text)
+
+        confidence = 0.85 if name != "chat" else 0.5
+        return RouteResult(
+            function=name,
+            arguments=args,
+            confidence=confidence,
+            latency_ms=latency_ms,
+            raw_response=generated,
+            engine=self.engine,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Lazy singleton accessor
 # ---------------------------------------------------------------------------
 
@@ -538,17 +725,38 @@ def get_router() -> Optional[SierraRouter]:
             return _router_singleton
         if _router_error is not None:
             return None
+
+        # Explicit Groq-only mode: skip the local model entirely.
+        if ROUTER_ENGINE == "groq":
+            try:
+                _router_singleton = GroqRouter()
+                return _router_singleton
+            except Exception as exc:  # pragma: no cover - depends on env
+                logger.warning("Groq router unavailable: %s", exc)
+                _router_error = exc
+                return None
+
         try:
             _router_singleton = SierraRouter()
+            return _router_singleton
         except Exception as exc:  # pragma: no cover - depends on env
-            logger.warning(
-                "Sierra router unavailable, falling back to Gemini-only "
-                "mode: %s",
-                exc,
-            )
+            logger.warning("Local Sierra router unavailable: %s", exc)
+            # Cloud fallback: route via Groq if configured (unless forced local).
+            if ROUTER_ENGINE != "local" and os.environ.get("GROQ_API_KEY"):
+                try:
+                    _router_singleton = GroqRouter()
+                    logger.info(
+                        "Falling back to Groq cloud router for real-time "
+                        "command routing."
+                    )
+                    return _router_singleton
+                except Exception as groq_exc:  # pragma: no cover - depends on env
+                    logger.warning("Groq router unavailable: %s", groq_exc)
+                    _router_error = groq_exc
+                    return None
+            logger.warning("Falling back to Gemini-only mode.")
             _router_error = exc
             return None
-        return _router_singleton
 
 
 def warm_up_async() -> threading.Thread:
@@ -570,6 +778,7 @@ __all__ = [
     "VALID_FUNCTION_NAMES",
     "RouteResult",
     "SierraRouter",
+    "GroqRouter",
     "get_router",
     "warm_up_async",
 ]
