@@ -286,7 +286,7 @@ confirm_action_tool = {
 # MASTER TOOLS LIST (for Gemini / router)
 # =============================================================================
 
- tools_list = [{"function_declarations": [
+tools_list = [{"function_declarations": [
     # Core
     read_file_tool,
     read_directory_tool,
