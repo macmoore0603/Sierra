@@ -254,149 +254,251 @@ final class SierraViewModel: ObservableObject {
     }
 }
 
+// MARK: - Tabs
+
+enum SierraTab: String, CaseIterable, Identifiable {
+    case chat = "Chat"
+    case tools = "Tools"
+    case devices = "Devices"
+    case settings = "Settings"
+    var id: String { rawValue }
+    var icon: String {
+        switch self {
+        case .chat: return "waveform"
+        case .tools: return "wrench.and.screwdriver.fill"
+        case .devices: return "house.fill"
+        case .settings: return "gearshape.fill"
+        }
+    }
+}
+
+// MARK: - Root
+
 struct ContentView: View {
     @StateObject private var vm = SierraViewModel()
     @State private var inputText = ""
-    @State private var reactorScale: CGFloat = 1.0
-    @State private var reactorGlow: Double = 0.8
-    @State private var reactorRotation: Double = 0.0
+    @State private var tab: SierraTab = .chat
 
     var body: some View {
         ZStack {
-            LinearGradient(gradient: Gradient(colors: [Color.black, Color(red: 0.12, green: 0.08, blue: 0.0), Color.black]), startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
-
+            Theme.backdrop.ignoresSafeArea()
             VStack(spacing: 0) {
-                HStack {
-                    Text("SIERRA")
-                        .font(.system(size: 38, weight: .bold, design: .rounded))
-                        .foregroundStyle(LinearGradient(colors: [.yellow, .orange, .yellow], startPoint: .leading, endPoint: .trailing))
-                    Circle()
-                        .fill(vm.isConnected ? Color.green : Color.red)
-                        .frame(width: 10, height: 10)
-                        .shadow(color: vm.isConnected ? .green : .red, radius: 6)
-                    Text(vm.serverStatus)
-                        .font(.caption2)
-                        .foregroundColor(.gray)
-                    Spacer()
-                    Text("LEXUS NEXUS CAPITAL")
-                        .font(.caption.bold())
-                        .foregroundColor(.yellow.opacity(0.9))
-                }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 14)
-                .background(.black.opacity(0.9))
-
-                ZStack {
-                    Circle().stroke(Color.yellow.opacity(0.25), lineWidth: 10)
-                        .frame(width: 220, height: 220)
-                        .rotationEffect(.degrees(reactorRotation))
-
-                    Circle()
-                        .stroke(LinearGradient(colors: [.yellow, .orange, .yellow], startPoint: .top, endPoint: .bottom), lineWidth: 18)
-                        .frame(width: 180, height: 180)
-                        .scaleEffect(reactorScale)
-                        .opacity(reactorGlow)
-
-                    Circle()
-                        .fill(RadialGradient(colors: [.yellow, .orange, .black], center: .center, startRadius: 25, endRadius: 70))
-                        .frame(width: 110, height: 110)
-                        .shadow(color: .yellow, radius: 40)
-                }
-                .padding(.top, 30)
-                .onAppear { animateReactor(listening: vm.isListening) }
-                .onChange(of: vm.isListening) { _, newValue in
-                    animateReactor(listening: newValue)
-                }
-
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 20) {
-                            ForEach(vm.messages) { msg in
-                                ChatBubble(text: msg.text, isUser: msg.isUser)
-                                    .id(msg.id)
-                            }
-                        }
-                        .padding(24)
-                    }
-                    // Keep the newest message in view as turns stream in.
-                    .onChange(of: vm.messages.last?.id) { _, _ in
-                        if let lastID = vm.messages.last?.id {
-                            withAnimation(.easeOut(duration: 0.25)) {
-                                proxy.scrollTo(lastID, anchor: .bottom)
-                            }
-                        }
-                    }
-                    .onChange(of: vm.messages.last?.text) { _, _ in
-                        if let lastID = vm.messages.last?.id {
-                            proxy.scrollTo(lastID, anchor: .bottom)
-                        }
-                    }
-                }
-
-                if !vm.liveTranscription.isEmpty {
-                    Text("🎙️ \(vm.liveTranscription)")
-                        .font(.caption)
-                        .foregroundColor(.yellow)
-                        .padding(10)
-                        .background(Color.yellow.opacity(0.2))
-                        .cornerRadius(16)
-                        .padding(.horizontal)
-                }
-
-                HStack(spacing: 16) {
-                    TextField("Speak or type to Sierra...", text: $inputText)
-                        .textFieldStyle(.plain)
-                        .padding(16)
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(30)
-                        .overlay(RoundedRectangle(cornerRadius: 30).strokeBorder(LinearGradient(colors: [.yellow.opacity(0.7), .orange.opacity(0.5)], startPoint: .leading, endPoint: .trailing), lineWidth: 1.5))
-                        .onSubmit(sendTyped)
-
-                    Button(action: sendTyped) {
-                        Image(systemName: "paperplane.fill")
-                            .font(.title2)
-                            .foregroundColor(.yellow)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button(action: vm.toggleVoice) {
-                        Image(systemName: vm.isListening ? "waveform.path" : "mic.circle.fill")
-                            .font(.largeTitle)
-                            .foregroundStyle(vm.isListening ? .red : .yellow)
-                            .symbolEffect(.pulse, isActive: vm.isListening)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 32)
+                header
+                tabBar
+                Rectangle().fill(Theme.gold.opacity(0.18)).frame(height: 1)
+                content
             }
         }
         .preferredColorScheme(.dark)
+        .frame(minWidth: 780, minHeight: 600)
         .onAppear { vm.onAppear() }
         .onDisappear { vm.onDisappear() }
     }
 
-    private func sendTyped() {
+    private var header: some View {
+        HStack(spacing: 14) {
+            Text("SIERRA")
+                .font(.system(size: 30, weight: .heavy, design: .rounded))
+                .foregroundStyle(Theme.metalGold)
+                .shadow(color: Theme.gold.opacity(0.5), radius: 8)
+            Text("JARVIS-CLASS ASSISTANT")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(2)
+                .foregroundColor(Theme.textDim)
+            Spacer()
+            ConnectionPill(connected: vm.isConnected, status: vm.serverStatus)
+        }
+        .padding(.horizontal, 26)
+        .padding(.vertical, 16)
+        .background(Theme.bg0.opacity(0.55))
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 6) {
+            ForEach(SierraTab.allCases) { t in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { tab = t }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: t.icon)
+                        Text(t.rawValue).font(.system(size: 13, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundStyle(tab == t ? AnyShapeStyle(Theme.metalGold) : AnyShapeStyle(Theme.textDim))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(tab == t ? Theme.gold.opacity(0.12) : .clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .strokeBorder(tab == t ? Theme.gold.opacity(0.5) : .clear, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
+    }
+
+    @ViewBuilder private var content: some View {
+        switch tab {
+        case .chat:
+            ChatTab(vm: vm, inputText: $inputText)
+        case .tools:
+            ToolsTab { starter in
+                inputText = starter
+                withAnimation(.easeInOut(duration: 0.2)) { tab = .chat }
+            }
+        case .devices:
+            DevicesTab(vm: vm)
+        case .settings:
+            SettingsTab(vm: vm)
+        }
+    }
+}
+
+// MARK: - Connection pill
+
+struct ConnectionPill: View {
+    let connected: Bool
+    let status: String
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(connected ? Color.green : Color(hex: 0xC0392B))
+                .frame(width: 9, height: 9)
+                .shadow(color: connected ? .green : .red, radius: 5)
+            Text(status)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(Theme.textDim)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Capsule().fill(Theme.panel.opacity(0.8)))
+        .overlay(Capsule().strokeBorder(Theme.gold.opacity(0.3), lineWidth: 1))
+    }
+}
+
+// MARK: - Chat tab
+
+struct ChatTab: View {
+    @ObservedObject var vm: SierraViewModel
+    @Binding var inputText: String
+    @FocusState private var inputFocused: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            reactorPanel
+                .frame(width: 252)
+            chatPanel
+        }
+        .padding(20)
+        .onAppear { if !inputText.isEmpty { inputFocused = true } }
+    }
+
+    private var reactorPanel: some View {
+        VStack(spacing: 14) {
+            ArcReactorView(isListening: vm.isListening, size: 210)
+                .padding(.top, 6)
+            Text(vm.isListening ? "LISTENING" : (vm.isConnected ? "READY" : "OFFLINE"))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .tracking(3)
+                .foregroundStyle(Theme.metalGold)
+            if !vm.liveTranscription.isEmpty {
+                Text("🎙️ \(vm.liveTranscription)")
+                    .font(.caption)
+                    .foregroundColor(Theme.gold)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+            }
+            Spacer()
+            micButton
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var micButton: some View {
+        Button(action: vm.toggleVoice) {
+            ZStack {
+                Circle()
+                    .fill(vm.isListening ? AnyShapeStyle(Color(hex: 0xC0392B)) : AnyShapeStyle(Theme.metalGold))
+                    .frame(width: 64, height: 64)
+                    .shadow(color: (vm.isListening ? Color.red : Theme.gold).opacity(0.7), radius: 16)
+                Image(systemName: vm.isListening ? "stop.fill" : "mic.fill")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.black)
+            }
+        }
+        .buttonStyle(.plain)
+        .help(vm.isListening ? "Stop listening" : "Talk to Sierra")
+    }
+
+    private var chatPanel: some View {
+        VStack(spacing: 12) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 14) {
+                        if vm.messages.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "sparkles").font(.title).foregroundStyle(Theme.metalGold)
+                                Text("Say “Hey Sierra” or type below.")
+                                    .font(.callout).foregroundColor(Theme.textDim)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 60)
+                        }
+                        ForEach(vm.messages) { msg in
+                            ChatBubble(text: msg.text, isUser: msg.isUser).id(msg.id)
+                        }
+                    }
+                    .padding(16)
+                }
+                .onChange(of: vm.messages.last?.id) { _, _ in scrollToEnd(proxy) }
+                .onChange(of: vm.messages.last?.text) { _, _ in scrollToEnd(proxy) }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.bg1.opacity(0.5))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Theme.gold.opacity(0.18), lineWidth: 1)
+            )
+            inputBar
+        }
+    }
+
+    private var inputBar: some View {
+        HStack(spacing: 12) {
+            TextField("Speak or type to Sierra…", text: $inputText)
+                .textFieldStyle(.plain)
+                .focused($inputFocused)
+                .foregroundColor(Theme.textPrimary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Capsule().fill(Theme.panel.opacity(0.9)))
+                .overlay(Capsule().strokeBorder(Theme.goldStroke, lineWidth: 1.4))
+                .onSubmit(send)
+            Button(action: send) {
+                Image(systemName: "paperplane.fill")
+                    .font(.title3)
+                    .foregroundStyle(Theme.metalGold)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func send() {
         let text = inputText
         inputText = ""
         vm.send(text)
     }
 
-    /// Keep the arc reactor visibly alive at all times — a slow idle spin and
-    /// gentle breathing glow — then intensify (faster, brighter, larger) while
-    /// Sierra is actively listening.
-    private func animateReactor(listening: Bool) {
-        withAnimation(.easeInOut(duration: listening ? 0.35 : 1.8).repeatForever(autoreverses: true)) {
-            reactorScale = listening ? 1.32 : 1.08
-            reactorGlow = listening ? 1.0 : 0.85
-        }
-        // Reset to 0 without animation, then drive a continuous forward spin so
-        // changing speed never makes the ring jump backwards.
-        reactorRotation = 0
-        withAnimation(.linear(duration: listening ? 1.4 : 7.0).repeatForever(autoreverses: false)) {
-            reactorRotation = 360
-        }
+    private func scrollToEnd(_ proxy: ScrollViewProxy) {
+        guard let id = vm.messages.last?.id else { return }
+        withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .bottom) }
     }
 }
 
@@ -405,15 +507,174 @@ struct ChatBubble: View {
     let isUser: Bool
     var body: some View {
         HStack {
-            if isUser { Spacer() }
+            if isUser { Spacer(minLength: 48) }
             Text(text)
-                .padding(16)
-                .background(isUser ? AnyShapeStyle(LinearGradient(colors: [.yellow, .orange], startPoint: .topLeading, endPoint: .bottomTrailing)) : AnyShapeStyle(Color.white.opacity(0.08)))
-                .foregroundColor(isUser ? .black : .white)
-                .cornerRadius(22)
-                .shadow(color: isUser ? .yellow.opacity(0.5) : .clear, radius: 10)
-            if !isUser { Spacer() }
+                .font(.system(size: 14))
+                .foregroundColor(isUser ? .black : Theme.textPrimary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background {
+                    if isUser {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.metalGold)
+                    } else {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Theme.panel)
+                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(Theme.gold.opacity(0.25), lineWidth: 1))
+                    }
+                }
+                .shadow(color: isUser ? Theme.gold.opacity(0.3) : .clear, radius: 8)
+            if !isUser { Spacer(minLength: 48) }
         }
+    }
+}
+
+// MARK: - Tools tab
+
+struct ToolsTab: View {
+    var onPick: (String) -> Void
+
+    private struct Tool: Identifiable {
+        let id = UUID()
+        let icon: String, title: String, desc: String, starter: String
+    }
+    private let tools: [Tool] = [
+        .init(icon: "cube.transparent", title: "CAD & 3D", desc: "Design printable 3D models", starter: "Generate a CAD model of "),
+        .init(icon: "globe", title: "Web", desc: "Browse & research online", starter: "Search the web for "),
+        .init(icon: "folder", title: "Files", desc: "Read & write project files", starter: "Read the file "),
+        .init(icon: "lightbulb.led", title: "Smart Home", desc: "Control your lights & plugs", starter: "Turn on the "),
+        .init(icon: "printer", title: "3D Printer", desc: "Send prints & check status", starter: "Check my printer status"),
+        .init(icon: "square.stack.3d.up", title: "Projects", desc: "Organize work into projects", starter: "Create a new project called "),
+        .init(icon: "eye", title: "Vision", desc: "See through your camera", starter: "What do you see?"),
+        .init(icon: "sun.max", title: "Briefing", desc: "Your daily summary", starter: "Give me my daily briefing"),
+    ]
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14)], spacing: 14) {
+                ForEach(tools) { t in
+                    Button { onPick(t.starter) } label: {
+                        GoldPanel {
+                            HStack(spacing: 14) {
+                                Image(systemName: t.icon)
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .foregroundStyle(Theme.metalGold)
+                                    .frame(width: 34)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(t.title).font(.system(size: 15, weight: .bold))
+                                        .foregroundColor(Theme.textPrimary)
+                                    Text(t.desc).font(.caption).foregroundColor(Theme.textDim)
+                                }
+                                Spacer()
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(20)
+        }
+    }
+}
+
+// MARK: - Devices tab
+
+struct DevicesTab: View {
+    @ObservedObject var vm: SierraViewModel
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                GoldPanel {
+                    HStack(spacing: 12) {
+                        Image(systemName: vm.isConnected ? "bolt.fill" : "bolt.slash.fill")
+                            .foregroundStyle(Theme.metalGold).font(.title3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Backend").font(.headline).foregroundColor(Theme.textPrimary)
+                            Text(vm.isConnected ? "Connected — \(vm.serverStatus)" : vm.serverStatus)
+                                .font(.caption).foregroundColor(Theme.textDim)
+                        }
+                        Spacer()
+                    }
+                }
+                deviceRow(icon: "lightbulb.led", title: "Smart Home (Kasa)",
+                          hint: "Ask Sierra to “list my smart devices” or “turn on the lamp”.")
+                deviceRow(icon: "printer", title: "3D Printers",
+                          hint: "Ask “discover printers” or “check my printer status”.")
+                deviceRow(icon: "camera", title: "Camera & Presence",
+                          hint: "Vision and gesture features run through the backend.")
+                Spacer()
+            }
+            .padding(20)
+        }
+    }
+
+    private func deviceRow(icon: String, title: String, hint: String) -> some View {
+        GoldPanel {
+            HStack(spacing: 12) {
+                Image(systemName: icon).foregroundStyle(Theme.metalGold).font(.title3).frame(width: 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.headline).foregroundColor(Theme.textPrimary)
+                    Text(hint).font(.caption).foregroundColor(Theme.textDim)
+                }
+                Spacer()
+            }
+        }
+    }
+}
+
+// MARK: - Settings tab
+
+struct SettingsTab: View {
+    @ObservedObject var vm: SierraViewModel
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                GoldPanel {
+                    VStack(alignment: .leading, spacing: 12) {
+                        infoRow("Backend", vm.serverURL)
+                        Divider().overlay(Theme.gold.opacity(0.15))
+                        infoRow("Status", vm.serverStatus)
+                        Divider().overlay(Theme.gold.opacity(0.15))
+                        infoRow("Wake words", "Hey Sierra · Sierra · OK Sierra")
+                        Divider().overlay(Theme.gold.opacity(0.15))
+                        infoRow("Real-time execution", "God Mode — on")
+                        Divider().overlay(Theme.gold.opacity(0.15))
+                        infoRow("Voice", "On-device wake word + Gemini Live")
+                        Divider().overlay(Theme.gold.opacity(0.15))
+                        infoRow("Version", "Sierra 1.0 · metallic-gold")
+                    }
+                }
+                HStack(spacing: 12) {
+                    actionButton(vm.isListening ? "Stop Listening" : "Start Listening",
+                                 icon: vm.isListening ? "stop.fill" : "mic.fill") { vm.toggleVoice() }
+                    actionButton("Say Hello", icon: "hand.wave.fill") { vm.send("Hello Sierra, introduce yourself in one sentence.") }
+                }
+                Spacer()
+            }
+            .padding(20)
+        }
+    }
+
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.textDim)
+            Spacer()
+            Text(value).font(.system(size: 13, design: .monospaced)).foregroundColor(Theme.textPrimary)
+        }
+    }
+
+    private func actionButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                Text(title).font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundColor(.black)
+            .padding(.horizontal, 18).padding(.vertical, 11)
+            .background(Capsule().fill(Theme.metalGold))
+            .shadow(color: Theme.gold.opacity(0.4), radius: 8)
+        }
+        .buttonStyle(.plain)
     }
 }
 
