@@ -12,6 +12,7 @@ struct SierraApp: App {
             ContentView()
         }
         .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1180, height: 760)
     }
 }
 
@@ -291,7 +292,7 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .frame(minWidth: 780, minHeight: 600)
+        .frame(minWidth: 940, minHeight: 680)
         .onAppear { vm.onAppear() }
         .onDisappear { vm.onDisappear() }
     }
@@ -359,7 +360,7 @@ struct ContentView: View {
     @ViewBuilder private var content: some View {
         switch tab {
         case .chat:
-            ChatTab(vm: vm, inputText: $inputText)
+            JarvisHUD(vm: vm, inputText: $inputText)
         case .tools:
             ToolsTab { starter in
                 inputText = starter
