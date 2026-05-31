@@ -31,6 +31,7 @@ final class SierraSocketClient: NSObject, URLSessionWebSocketDelegate {
     var onError: ((String) -> Void)?
     var onConnectedChange: ((Bool) -> Void)?
     var onAuthStatus: ((Bool) -> Void)?
+    var onToolExecution: ((_ tool: String, _ realtime: Bool) -> Void)?
 
     private(set) var isConnected = false
 
@@ -164,6 +165,10 @@ final class SierraSocketClient: NSObject, URLSessionWebSocketDelegate {
             let sender = (dict?["sender"] as? String) ?? "Sierra"
             let text = (dict?["text"] as? String) ?? (arg as? String) ?? ""
             if !text.isEmpty { deliver { $0.onTranscription?(sender, text) } }
+        case "tool_execution":
+            let tool = (dict?["tool"] as? String) ?? "tool"
+            let realtime = (dict?["realtime"] as? Bool) ?? true
+            deliver { $0.onToolExecution?(tool, realtime) }
         case "audio_data":
             if let list = dict?["data"] as? [Int] {
                 var bytes = [UInt8](); bytes.reserveCapacity(list.count)
