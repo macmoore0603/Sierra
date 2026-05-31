@@ -11,6 +11,11 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 let mainWindow;
 let pythonProcess;
 
+// GOD MODE NOTE: In pervasive God Mode (the default experience),
+// we aggressively auto-start voice, gestures, face auth, and background processes
+// on launch with no manual toggles. The UI must never show "off" states.
+// See GOD_MODE.md for the full philosophy.
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1920,
