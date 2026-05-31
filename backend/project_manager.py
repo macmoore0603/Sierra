@@ -1,58 +1,75 @@
-import os
 import json
+import logging
+import os
+import re
 import shutil
 import time
 from pathlib import Path
+from typing import List, Optional, Tuple
+
+logger = logging.getLogger("sierra.project_manager")
+
+# Characters allowed in project names after sanitization.
+_SAFE_CHAR_RE = re.compile(r"[^A-Za-z0-9 \-_]")
+
 
 class ProjectManager:
-    def __init__(self, workspace_root: str):
+    def __init__(self, workspace_root: str) -> None:
         self.workspace_root = Path(workspace_root)
         self.projects_dir = self.workspace_root / "projects"
         self.current_project = "temp"
-        
+
         # Ensure projects root exists
         if not self.projects_dir.exists():
             self.projects_dir.mkdir(parents=True)
-            
+
         # Clear temp project on startup if it exists
         temp_path = self.projects_dir / "temp"
         if temp_path.exists():
-            print("[ProjectManager] Clearing temp project...")
+            logger.info("Clearing temp project...")
             shutil.rmtree(temp_path)
-            
+
         # Ensure temp project receives fresh creation
         self.create_project("temp")
 
-    def create_project(self, name: str):
+    @staticmethod
+    def _sanitize_name(name: str) -> str:
+        """Strip unsafe characters from a project name."""
+        return _SAFE_CHAR_RE.sub("", name).strip()
+
+    def create_project(self, name: str) -> Tuple[bool, str]:
         """Creates a new project directory with subfolders."""
-        # Sanitize name to be safe for filesystem
-        safe_name = "".join([c for c in name if c.isalnum() or c in (' ', '-', '_')]).strip()
+        safe_name = self._sanitize_name(name)
+        if not safe_name:
+            return False, "Project name is empty after sanitization."
         project_path = self.projects_dir / safe_name
-        
+
         if not project_path.exists():
-            project_path.mkdir()
+            project_path.mkdir(parents=True)
             (project_path / "cad").mkdir()
             (project_path / "browser").mkdir()
-            print(f"[ProjectManager] Created project: {safe_name}")
+            logger.info("Created project: %s", safe_name)
             return True, f"Project '{safe_name}' created."
         return False, f"Project '{safe_name}' already exists."
 
-    def switch_project(self, name: str):
+    def switch_project(self, name: str) -> Tuple[bool, str]:
         """Switches the active project context."""
-        safe_name = "".join([c for c in name if c.isalnum() or c in (' ', '-', '_')]).strip()
+        safe_name = self._sanitize_name(name)
+        if not safe_name:
+            return False, "Project name is empty after sanitization."
         project_path = self.projects_dir / safe_name
-        
+
         if project_path.exists():
             self.current_project = safe_name
-            print(f"[ProjectManager] Switched to project: {safe_name}")
+            logger.info("Switched to project: %s", safe_name)
             return True, f"Switched to project '{safe_name}'."
         return False, f"Project '{safe_name}' does not exist."
 
-    def list_projects(self):
+    def list_projects(self) -> List[str]:
         """Returns a list of available projects."""
-        return [d.name for d in self.projects_dir.iterdir() if d.is_dir()]
+        return sorted(d.name for d in self.projects_dir.iterdir() if d.is_dir())
 
-    def get_current_project_path(self):
+    def get_current_project_path(self) -> Path:
         return self.projects_dir / self.current_project
 
     def log_chat(self, sender: str, text: str):
@@ -66,26 +83,26 @@ class ProjectManager:
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
 
-    def save_cad_artifact(self, source_path: str, prompt: str):
+    def save_cad_artifact(self, source_path: str, prompt: str) -> Optional[str]:
         """Copies a generated CAD file to the project's 'cad' folder."""
         if not os.path.exists(source_path):
-            print(f"[ProjectManager] [ERR] Source file not found: {source_path}")
+            logger.error("Source file not found: %s", source_path)
             return None
 
-        # Create a filename based on timestamp and prompt
         timestamp = int(time.time())
-        # Brief sanitization of prompt for filename
-        safe_prompt = "".join([c for c in prompt if c.isalnum() or c in (' ', '-', '_')])[:30].strip().replace(" ", "_")
+        safe_prompt = _SAFE_CHAR_RE.sub("", prompt)[:30].strip().replace(" ", "_")
         filename = f"{timestamp}_{safe_prompt}.stl"
-        
-        dest_path = self.get_current_project_path() / "cad" / filename
-        
+
+        cad_dir = self.get_current_project_path() / "cad"
+        cad_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = cad_dir / filename
+
         try:
             shutil.copy2(source_path, dest_path)
-            print(f"[ProjectManager] Saved CAD artifact to: {dest_path}")
+            logger.info("Saved CAD artifact to: %s", dest_path)
             return str(dest_path)
         except Exception as e:
-            print(f"[ProjectManager] [ERR] Failed to save artifact: {e}")
+            logger.error("Failed to save artifact: %s", e)
             return None
 
     def get_project_context(self, max_file_size: int = 10000) -> str:
@@ -141,18 +158,17 @@ class ProjectManager:
 
         return "\n".join(context_lines)
 
-    def get_recent_chat_history(self, limit: int = 10):
-        """Returns the last 'limit' chat messages from history."""
+    def get_recent_chat_history(self, limit: int = 10) -> List[dict]:
+        """Returns the last *limit* chat messages from history."""
         log_file = self.get_current_project_path() / "chat_history.jsonl"
         if not log_file.exists():
             return []
-            
+
         try:
             with open(log_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
-                
-            # Parse last N lines
-            history = []
+
+            history: List[dict] = []
             for line in lines[-limit:]:
                 try:
                     entry = json.loads(line)
@@ -161,6 +177,6 @@ class ProjectManager:
                     continue
             return history
         except Exception as e:
-            print(f"[ProjectManager] [ERR] Failed to read chat history: {e}")
+            logger.error("Failed to read chat history: %s", e)
             return []
 

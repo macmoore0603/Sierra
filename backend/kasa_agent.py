@@ -1,5 +1,13 @@
 import asyncio
-from kasa import Discover, SmartDevice, SmartBulb, SmartPlug
+import logging
+
+try:
+    from kasa.iot import IotDevice as SmartDevice, IotBulb as SmartBulb, IotPlug as SmartPlug
+except ImportError:
+    from kasa import SmartDevice, SmartBulb, SmartPlug
+from kasa import Discover
+
+logger = logging.getLogger("sierra.kasa_agent")
 
 class KasaAgent:
     def __init__(self, known_devices=None):
