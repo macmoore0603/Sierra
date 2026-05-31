@@ -4,6 +4,10 @@ import AVFoundation
 import AppKit
 import UserNotifications
 
+extension Notification.Name {
+    static let sierraActivate = Notification.Name("SierraActivate")
+}
+
 @main
 struct SierraApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -37,6 +41,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             if granted {
                 self.scheduleDailyBriefing()
             }
+        }
+
+        // Clap twice → bring the HUD to the front.
+        NotificationCenter.default.addObserver(forName: .sierraActivate, object: nil, queue: .main) { [weak self] _ in
+            self?.bringToFront()
         }
 
         // Make sure the HUD comes to the front on launch — on the user's CURRENT
@@ -95,28 +104,35 @@ final class SierraViewModel: ObservableObject {
     @Published var serverStatus = "Connecting…"
 
     let serverURL = "http://localhost:8000"
-    private let customWakeWords = ["hey sierra", "sierra", "hey sira", "hello sierra", "ok sierra"]
-    private let vadThreshold: Float = 0.017
+    private let wakeWords = ["hey sierra", "hey sira", "hello sierra", "ok sierra", "sierra"]
+    private let vadThreshold: Float = 0.015
+    private let clapThreshold: Float = 0.16
 
     private let socket = SierraSocketClient()
-    private let audioPlayer = AudioStreamPlayer()
 
     private let audioEngine = AVAudioEngine()
-    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
-    private var recognitionTask: SFSpeechRecognitionTask?
-    private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var task: SFSpeechRecognitionTask?
+    private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    private let synth = AVSpeechSynthesizer()
+
+    private enum Mode: Equatable { case idle, capturing }
+    private var mode: Mode = .idle
+    private var silence: DispatchWorkItem?
+    private var isSpeaking = false
+    private var lastClap: Double = 0
 
     // MARK: Lifecycle
     func onAppear() {
         configureSocket()
         socket.connect()
-        startWakeWordDetection()
+        startListening()
     }
 
     func onDisappear() {
-        if isListening { stopSession() }
         socket.disconnect()
-        stopAudioEngine()
+        teardownEngine()
+        synth.stopSpeaking(at: .immediate)
     }
 
     private func configureSocket() {
@@ -125,16 +141,7 @@ final class SierraViewModel: ObservableObject {
             self?.serverStatus = connected ? "Online" : "Reconnecting…"
         }
         socket.onStatus = { [weak self] msg in self?.serverStatus = msg }
-        socket.onError = { [weak self] msg in
-            self?.append(text: "⚠️ \(msg)", isUser: false, newBubble: true)
-        }
-        socket.onTranscription = { [weak self] sender, text in
-            self?.liveTranscription = ""
-            self?.append(text: text, isUser: sender.lowercased() == "user", newBubble: false)
-        }
-        socket.onAudio = { [weak self] data in
-            self?.audioPlayer.enqueue(data)
-        }
+        socket.onError = { _ in }
         socket.onToolExecution = { [weak self] tool, realtime in
             let prefix = realtime ? "⚡️ Executing" : "⏳ Confirm"
             self?.append(text: "\(prefix) \(tool)…", isUser: false, newBubble: true)
@@ -152,98 +159,142 @@ final class SierraViewModel: ObservableObject {
         }
     }
 
-    // MARK: Voice session (real-time)
+    // MARK: Mic button (push-to-talk)
     func toggleVoice() {
-        isListening ? stopSession() : startSession()
+        if mode == .capturing { finalizeCommand() } else { beginCapture(reset: true); armSilence() }
     }
 
-    private func startSession() {
-        guard !isListening else { return }
-        stopAudioEngine()                 // free the mic for the backend's session
-        audioPlayer.start()
-        socket.startAudio()
-        isListening = true
-        liveTranscription = ""
-    }
-
-    private func stopSession() {
-        guard isListening else { return }
-        socket.stopAudio()
-        audioPlayer.stop()
-        isListening = false
-        liveTranscription = ""
-        startWakeWordDetection()          // resume listening for the wake word
-    }
-
-    // MARK: On-device wake word
-    func startWakeWordDetection() {
+    // MARK: On-device voice loop  (wake word → capture → /chat → speak)
+    func startListening() {
         SFSpeechRecognizer.requestAuthorization { [weak self] status in
             guard status == .authorized else { return }
-            DispatchQueue.main.async { self?.beginWakeWordEngine() }
+            DispatchQueue.main.async { self?.startEngine() }
         }
     }
 
-    private func beginWakeWordEngine() {
-        guard !isListening else { return }
-        do {
-            let inputNode = audioEngine.inputNode
-            let recordingFormat = inputNode.outputFormat(forBus: 0)
-            inputNode.removeTap(onBus: 0)
+    private func startEngine() {
+        guard !audioEngine.isRunning else { startRecognition(); return }
+        let input = audioEngine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            guard let self else { return }
+            let level = self.rms(buffer)
+            if level > self.vadThreshold { self.request?.append(buffer) }
+            self.detectClap(level)
+        }
+        audioEngine.prepare()
+        do { try audioEngine.start() } catch { print("Audio engine error: \(error)"); return }
+        startRecognition()
+    }
 
-            let request = SFSpeechAudioBufferRecognitionRequest()
-            request.shouldReportPartialResults = true
-            recognitionRequest = request
-
-            inputNode.installTap(onBus: 0, bufferSize: 512, format: recordingFormat) { [weak self] buffer, _ in
-                guard let self else { return }
-                if self.calculateRMS(buffer: buffer) > self.vadThreshold {
-                    self.recognitionRequest?.append(buffer)
-                }
-            }
-
-            audioEngine.prepare()
-            try audioEngine.start()
-
-            recognitionTask = speechRecognizer?.recognitionTask(with: request) { [weak self] result, _ in
-                guard let self, let result else { return }
-                Task { @MainActor in
-                    guard !self.isListening else { return }
-                    let transcript = result.bestTranscription.formattedString
-                    self.liveTranscription = transcript
-                    let text = transcript.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-                    if self.customWakeWords.contains(where: { text.contains($0) }) {
-                        self.handleWakeWordDetected()
-                    }
-                }
-            }
-        } catch {
-            print("Wake word error: \(error)")
+    private func startRecognition() {
+        task?.cancel()
+        let r = SFSpeechAudioBufferRecognitionRequest()
+        r.shouldReportPartialResults = true
+        if recognizer?.supportsOnDeviceRecognition == true { r.requiresOnDeviceRecognition = true }
+        request = r
+        task = recognizer?.recognitionTask(with: r) { [weak self] result, _ in
+            guard let self, let result else { return }
+            Task { @MainActor in self.handle(result.bestTranscription.formattedString) }
         }
     }
 
-    private func handleWakeWordDetected() {
-        append(text: "Hey Sierra", isUser: true, newBubble: true)
-        startSession()                    // hand off to the real-time backend session
+    private func restartRecognition() {
+        request?.endAudio()
+        startRecognition()
     }
 
-    private func calculateRMS(buffer: AVAudioPCMBuffer) -> Float {
-        guard let channelData = buffer.floatChannelData?[0] else { return 0.0 }
-        let frameLength = Int(buffer.frameLength)
-        var sum: Float = 0.0
-        for i in 0..<frameLength { sum += channelData[i] * channelData[i] }
-        return sqrt(sum / Float(max(frameLength, 1)))
+    private func handle(_ transcript: String) {
+        guard !isSpeaking else { return }            // ignore Sierra's own voice
+        let lower = transcript.lowercased()
+        if let r = wakeRange(in: lower) {
+            let after = String(lower[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if mode == .idle { beginCapture(reset: false) }
+            liveTranscription = after
+            armSilence()
+        } else if mode == .capturing {
+            liveTranscription = lower.trimmingCharacters(in: .whitespacesAndNewlines)
+            armSilence()
+        }
     }
 
-    private func stopAudioEngine() {
+    private func wakeRange(in lower: String) -> Range<String.Index>? {
+        for w in wakeWords { if let r = lower.range(of: w) { return r } }
+        return nil
+    }
+
+    private func beginCapture(reset: Bool) {
+        mode = .capturing
+        isListening = true
+        if reset { liveTranscription = "" }
+    }
+
+    private func armSilence() {
+        silence?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.finalizeCommand() }
+        silence = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3, execute: work)
+    }
+
+    private func finalizeCommand() {
+        silence?.cancel(); silence = nil
+        let cmd = liveTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
+        mode = .idle
+        isListening = false
+        liveTranscription = ""
+        restartRecognition()                         // clear the buffer for the next turn
+        if !cmd.isEmpty { send(cmd) }
+    }
+
+    // MARK: Speak the reply (system voice — instant, no API, no quota)
+    private func speak(_ text: String) {
+        guard !text.isEmpty else { return }
+        isSpeaking = true
+        let u = AVSpeechUtterance(string: text)
+        u.voice = AVSpeechSynthesisVoice(language: "en-US")
+        u.rate = 0.5
+        synth.stopSpeaking(at: .immediate)
+        synth.speak(u)
+        // Mute the mic-guard for an estimate of the speech length, then clear
+        // the buffer so we don't transcribe Sierra's own voice.
+        let words = max(1, text.split(separator: " ").count)
+        let estimate = max(1.2, Double(words) / 2.4 + 0.6)
+        DispatchQueue.main.asyncAfter(deadline: .now() + estimate) { [weak self] in
+            self?.isSpeaking = false
+            self?.restartRecognition()
+        }
+    }
+
+    // MARK: Clap-twice → bring the HUD to the front
+    private func detectClap(_ level: Float) {
+        guard level > clapThreshold else { return }
+        let now = Date().timeIntervalSinceReferenceDate
+        let dt = now - lastClap
+        if dt > 0.12 && dt < 0.6 {                    // second clap of a pair
+            lastClap = 0
+            DispatchQueue.main.async { NotificationCenter.default.post(name: .sierraActivate, object: nil) }
+        } else if dt > 0.12 {                         // first clap
+            lastClap = now
+        }
+    }
+
+    private func rms(_ buffer: AVAudioPCMBuffer) -> Float {
+        guard let ch = buffer.floatChannelData?[0] else { return 0 }
+        let n = Int(buffer.frameLength)
+        var sum: Float = 0
+        for i in 0..<n { sum += ch[i] * ch[i] }
+        return sqrt(sum / Float(max(n, 1)))
+    }
+
+    private func teardownEngine() {
+        silence?.cancel(); silence = nil
         if audioEngine.isRunning { audioEngine.stop() }
-        recognitionRequest?.endAudio()
-        recognitionTask?.cancel()
-        recognitionRequest = nil
-        recognitionTask = nil
+        request?.endAudio(); task?.cancel(); request = nil; task = nil
         audioEngine.inputNode.removeTap(onBus: 0)
     }
 
-    // MARK: Typed text (REST /chat)
+    // MARK: Send to /chat (typed or spoken) — reply is shown and spoken
     func send(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -252,8 +303,11 @@ final class SierraViewModel: ObservableObject {
             do {
                 let response = try await sendToSierra(trimmed)
                 self.append(text: response, isUser: false, newBubble: true)
+                self.speak(response)
             } catch {
-                self.append(text: "Connection error. Is the backend running?", isUser: false, newBubble: true)
+                let m = "Connection error. Is the backend running?"
+                self.append(text: m, isUser: false, newBubble: true)
+                self.speak(m)
             }
         }
     }
