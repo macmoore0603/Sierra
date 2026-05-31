@@ -43,8 +43,31 @@ After installing the app, finish granting access with the helper script:
 bash ../scripts/macos-activate-permissions.sh
 ```
 
+## Real-time connection to the backend
+
+The app's voice loop is real-time **on-device**: `SFSpeechRecognizer` + `AVAudioEngine`
+do continuous wake-word detection ("Hey Sierra") and live partial transcription with
+no server round-trip.
+
+For responses it calls the backend at `http://localhost:8000/chat`
+(`POST {"message": ...}` → `{"response": ...}`). That REST route is served by
+[`backend/server.py`](../backend/server.py) and is backed by Gemini text generation —
+a fast request/response turn. Set `GEMINI_API_KEY` (and optionally `GEMINI_TEXT_MODEL`,
+default `gemini-2.5-flash`) in the backend `.env`.
+
+> **Full streaming voice (Gemini Live audio):** the backend also exposes a true
+> real-time audio pipeline over **Socket.IO** (`start_audio` → `transcription` /
+> `audio_data` events), which the Electron frontend uses. Wiring the native app to
+> that pipeline (via a Socket.IO Swift client) is a future enhancement; today the
+> native app uses on-device transcription + the `/chat` REST turn.
+
 ## Building
 
 Open the `Sierra/` sources in Xcode (macOS target), or add them to the existing
-Xcode project, then build and run. The app expects the Sierra backend to be
-running locally (`backend/server.py`).
+Xcode project, then build and run. Start the backend first:
+
+```bash
+pip install -r requirements.txt          # from repo root
+echo "GEMINI_API_KEY=AIza..." > .env
+python backend/server.py                  # serves http://localhost:8000
+```
