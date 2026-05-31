@@ -155,6 +155,9 @@ async def startup_event():
     print("[SERVER] Startup: Initializing Kasa Agent...")
     await kasa_agent.initialize()
 
+    # Preload the local model so the first command is fast.
+    asyncio.create_task(asyncio.to_thread(warm_ollama))
+
 @app.get("/status")
 async def status():
     return {"status": "running", "service": "Sierra Backend"}
@@ -166,11 +169,75 @@ async def status():
 # macOS app's "Hey Sierra" text turns) a fast request/response round-trip so they
 # get a real answer instead of a connection error. Always returns {"response": str}.
 
+import urllib.request as _urlreq
+
 SIERRA_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+OLLAMA_KEEPALIVE = os.getenv("OLLAMA_KEEPALIVE", "60m")
 SIERRA_SYSTEM_PROMPT = (
     "You are Sierra, a proactive, concise, voice-first personal AI assistant. "
     "Answer in 1-3 short sentences suitable to be spoken aloud."
 )
+
+# Queries that likely need fresh/web info → route to cloud (search grounding).
+_SEARCH_HINTS = (
+    "news", "headline", "weather", "today", "tonight", "tomorrow", "current",
+    "latest", "right now", "score", "stock", "price", "who won", "forecast",
+    "happening", "recent", "update on", "this week", "search for",
+)
+
+
+def _needs_search(msg: str) -> bool:
+    m = msg.lower()
+    return any(h in m for h in _SEARCH_HINTS)
+
+
+def _ollama_sync(message: str) -> str:
+    payload = json.dumps({
+        "model": OLLAMA_MODEL,
+        "keep_alive": OLLAMA_KEEPALIVE,
+        "stream": False,
+        "messages": [
+            {"role": "system", "content": SIERRA_SYSTEM_PROMPT},
+            {"role": "user", "content": message},
+        ],
+        "options": {"temperature": 0.6, "num_predict": 220},
+    }).encode()
+    req = _urlreq.Request(OLLAMA_URL + "/api/chat", data=payload,
+                          headers={"Content-Type": "application/json"})
+    with _urlreq.urlopen(req, timeout=60) as resp:
+        return (json.loads(resp.read().decode()).get("message", {}).get("content") or "").strip()
+
+
+async def _ollama(message: str) -> str:
+    return await asyncio.to_thread(_ollama_sync, message)
+
+
+async def _gemini(message: str) -> str:
+    try:
+        cfg = sierra.types.GenerateContentConfig(
+            system_instruction=SIERRA_SYSTEM_PROMPT,
+            tools=[sierra.types.Tool(google_search=sierra.types.GoogleSearch())],
+        )
+    except Exception:
+        cfg = sierra.types.GenerateContentConfig(system_instruction=SIERRA_SYSTEM_PROMPT)
+    result = await sierra.client.aio.models.generate_content(
+        model=SIERRA_TEXT_MODEL, contents=message, config=cfg,
+    )
+    return (getattr(result, "text", None) or "").strip()
+
+
+def warm_ollama():
+    """Preload the local model so the first real turn is fast (~0.3s warm)."""
+    try:
+        payload = json.dumps({"model": OLLAMA_MODEL, "keep_alive": OLLAMA_KEEPALIVE}).encode()
+        req = _urlreq.Request(OLLAMA_URL + "/api/generate", data=payload,
+                              headers={"Content-Type": "application/json"})
+        _urlreq.urlopen(req, timeout=120).read()
+        print(f"[SERVER] Warmed local model {OLLAMA_MODEL}")
+    except Exception as e:
+        print(f"[SERVER] Ollama warm failed (is `ollama serve` running?): {e}")
 
 
 class ChatRequest(BaseModel):
@@ -183,34 +250,35 @@ async def chat(req: ChatRequest):
     if not message:
         return {"response": "I didn't catch that. Say it again?"}
 
-    if sierra.client is None:
-        return {"response": "Sierra's brain is offline: GEMINI_API_KEY is not set on the backend."}
+    use_cloud = _needs_search(message) and sierra.client is not None
 
-    # Google Search grounding lets Sierra answer with current info (news,
-    # weather, scores…). The model only actually searches when it needs to, so
-    # simple turns stay fast.
-    try:
-        cfg = sierra.types.GenerateContentConfig(
-            system_instruction=SIERRA_SYSTEM_PROMPT,
-            tools=[sierra.types.Tool(google_search=sierra.types.GoogleSearch())],
-        )
-    except Exception:
-        cfg = sierra.types.GenerateContentConfig(system_instruction=SIERRA_SYSTEM_PROMPT)
+    # Current-info queries → cloud Gemini (Google Search grounding); fall back local.
+    if use_cloud:
+        try:
+            text = await _gemini(message)
+            if text:
+                return {"response": text}
+        except Exception as e:
+            print(f"[SERVER] gemini failed, falling back to local: {e}")
 
+    # Everything else (fast, no quota) and the cloud fallback → local model.
     try:
-        result = await sierra.client.aio.models.generate_content(
-            model=SIERRA_TEXT_MODEL, contents=message, config=cfg,
-        )
-        text = (getattr(result, "text", None) or "").strip()
-        return {"response": text or "…"}
+        text = await _ollama(message)
+        if text:
+            return {"response": text}
     except Exception as e:
-        msg = str(e)
-        print(f"[SERVER] /chat error: {msg}")
-        if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower():
-            return {"response": "I'm rate-limited on the current API tier right now — give me a few seconds and try again."}
-        if "API key" in msg or "401" in msg or "403" in msg or "PERMISSION" in msg:
-            return {"response": "My API key was rejected — it may have expired. Please refresh GEMINI_API_KEY."}
-        return {"response": "I hit a snag reaching my model. Try again in a moment."}
+        print(f"[SERVER] ollama failed: {e}")
+
+    # Last resort: try cloud if we didn't already.
+    if not use_cloud and sierra.client is not None:
+        try:
+            text = await _gemini(message)
+            if text:
+                return {"response": text}
+        except Exception as e:
+            print(f"[SERVER] gemini last-resort failed: {e}")
+
+    return {"response": "I can't reach a model right now — make sure Ollama is running (ollama serve) or refresh the API key."}
 
 @sio.event
 async def connect(sid, environ):
