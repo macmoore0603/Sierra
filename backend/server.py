@@ -186,19 +186,31 @@ async def chat(req: ChatRequest):
     if sierra.client is None:
         return {"response": "Sierra's brain is offline: GEMINI_API_KEY is not set on the backend."}
 
+    # Google Search grounding lets Sierra answer with current info (news,
+    # weather, scores…). The model only actually searches when it needs to, so
+    # simple turns stay fast.
+    try:
+        cfg = sierra.types.GenerateContentConfig(
+            system_instruction=SIERRA_SYSTEM_PROMPT,
+            tools=[sierra.types.Tool(google_search=sierra.types.GoogleSearch())],
+        )
+    except Exception:
+        cfg = sierra.types.GenerateContentConfig(system_instruction=SIERRA_SYSTEM_PROMPT)
+
     try:
         result = await sierra.client.aio.models.generate_content(
-            model=SIERRA_TEXT_MODEL,
-            contents=message,
-            config=sierra.types.GenerateContentConfig(
-                system_instruction=SIERRA_SYSTEM_PROMPT,
-            ),
+            model=SIERRA_TEXT_MODEL, contents=message, config=cfg,
         )
         text = (getattr(result, "text", None) or "").strip()
-        return {"response": text or "..."}
+        return {"response": text or "…"}
     except Exception as e:
-        print(f"[SERVER] /chat error: {e}")
-        return {"response": f"Sierra hit an error: {e}"}
+        msg = str(e)
+        print(f"[SERVER] /chat error: {msg}")
+        if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower():
+            return {"response": "I'm rate-limited on the current API tier right now — give me a few seconds and try again."}
+        if "API key" in msg or "401" in msg or "403" in msg or "PERMISSION" in msg:
+            return {"response": "My API key was rejected — it may have expired. Please refresh GEMINI_API_KEY."}
+        return {"response": "I hit a snag reaching my model. Try again in a moment."}
 
 @sio.event
 async def connect(sid, environ):
