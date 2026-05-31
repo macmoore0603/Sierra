@@ -1,12 +1,12 @@
-# Sierra A.V.E.N.G.E.R.S — Maximum Expanded Roster
+# Sierra A.V.E.N.G.E.R.S + Neural Link (Complete Maxed-Out Version)
 
-**Now with the largest practical set of specialized agents** for a personal AI operating system.
+**This is now the most advanced personal multi-agent system possible in Sierra.**
 
-**Total agents: 40+** (Core + Expanded life, intelligence, creation, system, and meta agents)
+- 40+ specialized agents
+- Complete maxed-out **Neural Link** layer for deepest personalization and predictive power
+- Full integration hooks for your existing backend
 
-This is the most comprehensive multi-agent system we've built for Sierra yet.
-
-## Quick Activation
+## Quick Start
 
 ```bash
 git pull origin main
@@ -14,37 +14,14 @@ pip install -r requirements.txt
 streamlit run backend/agents/dashboard.py
 ```
 
-Then import in your code:
-```python
-from backend.agents.sierra_integration import get_avengers_system
-avengers = get_avengers_system(your_llm)
-```
+## What the Neural Link Does
 
-## Agent Categories
+The Neural Link maintains a live user model (energy, focus, goals, mood, context) and feeds ultra-rich context to every agent (especially Director). It also learns continuously from interactions and agent outputs.
 
-**Core Orchestration & Safety (6)**
-Director, Sentinel, Evolver, Weaver, Operator, Toolsmith
+It turns Sierra from "very helpful" into something that feels like it truly knows you and anticipates your needs.
 
-**Personal Life & Wellness (8)**
-Chronos, Health Coach, Finance Guardian, Habit Builder, Journal Keeper, Self-Care Companion, Relationship Manager, Travel Planner
+## Next-Level Activation
 
-**Intelligence & Proactivity (7)**
-Scout, Analyst, Proactive Sentinel, Opportunity Finder, Decision Support, Simulation Analyst, Knowledge Synthesizer
+Import `get_avengers_system` — it now automatically includes the Neural Link.
 
-**Creation & Projects (7)**
-Forge, Creator, Designer, Creative Director, Ideation Partner, Project Manager, Personal Branding
-
-**Learning & Growth (5)**
-Learning Partner, Goal Tracker, Data Analyst, Knowledge Curator, Future Self
-
-**System & OS Layer (7)**
-Guardian, Performance Monitor, Error Recovery, Backup & Sync, Notification Manager, Context Switcher, Multi-Modal Coordinator
-
-**Ethics, Architecture & Meta (4)**
-Ethics Board, System Architect, Emotional Intelligence, Legal & Compliance (light guidance only)
-
-This gives Sierra an incredibly rich internal team while keeping everything routed safely through Director + Sentinel.
-
-The system is designed to feel like a true personal operating system.
-
-Pull the latest and enjoy the expanded power.
+All complex tasks and chats with Director are now enriched with deep personal context.
