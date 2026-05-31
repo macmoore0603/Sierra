@@ -1,29 +1,21 @@
 # Sierra Changelog
 
-All notable changes to Sierra will be documented in this file.
+## [Unreleased] - Pervasive God Mode Update (late May 2026)
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### God Mode / Full Access Experience
+- Made God Mode pervasive and automatic as the default and only experience.
+- UI never shows "off", restricted, or warning states for core features (voice wake "Hey Sierra", gestures, face auth, camera presence, background processes) when full access is enabled.
+- Added auto-force logic (onMount + delay + defensive guards) so voice, gestures, presence, and connection states are powered on immediately on app load.
+- DAEMON / background connection indicator now shows "GOD" in full access mode and is force-tappable.
+- Titlebar and HUD elements use "GOD" branding instead of "offline" / "connecting".
+- Added dedicated `GOD_MODE.md` documenting the full philosophy, auto-force implementation, canonical app rule, and macOS permission activation flow.
+- Updated README, ROADMAP, and ARCHITECTURE to treat pervasive God Mode as a core, top-priority principle.
+- One prominent "ACTIVATE ALL PERMISSIONS NOW (God Mode)" button + helper script for aggressive macOS TCC activation (Camera for gestures, Accessibility, Automation, Full Disk, Screen Recording, etc.).
+- Strict "canonical app only" rule: users must only launch the installed production build; build artifacts are never launched directly.
 
-## [Unreleased] - 2026-05-31
-
-### Added
-- `backend/integrations/github.py` — GitHubIntegration example following the BaseIntegration pattern (list repos, create issues with confirmation).
-- `ROADMAP.md` — Clear prioritized roadmap covering Memory activation, Personal Integrations, Multi-Agent, Proactive behavior, and Polish.
-- Updated `README.md` with architecture highlights and links to ARCHITECTURE.md + ROADMAP.md.
-
-### Progress
-Sierra now has:
-- Concrete examples of personal integrations (Calendar + GitHub)
-- Easy memory context helpers
-- Clear documentation of architecture and future direction
-
-This round focused on **making integrations real and the vision actionable**.
-
-## Recent Rounds
-- Round 5: context.py + ARCHITECTURE.md
-- Round 4: CalendarIntegration + orchestrator improvements
+### Other Improvements
+- (Previous items from earlier development)
 
 ---
 
-> Continuing focused, high-quality iteration toward the ultimate personal AI agent.
+*See GOD_MODE.md for the complete philosophy and implementation details from the extended "do all" development sessions.*
