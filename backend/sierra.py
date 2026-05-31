@@ -49,7 +49,13 @@ MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
 DEFAULT_MODE = "camera"
 
 load_dotenv()
-client = genai.Client(http_options={"api_version": "v1beta"}, api_key=os.getenv("GEMINI_API_KEY"))
+# Build the Gemini Live client lazily: importing this module (e.g. for tool
+# schemas) must not require a key. The live loop checks for it in run().
+client = (
+    genai.Client(http_options={"api_version": "v1beta"}, api_key=os.getenv("GEMINI_API_KEY"))
+    if os.getenv("GEMINI_API_KEY")
+    else None
+)
 
 # Function definitions
 generate_cad = {
@@ -1180,6 +1186,10 @@ class AudioLoop:
          pass
 
     async def run(self, start_message=None):
+        if client is None:
+            raise RuntimeError(
+                "The Gemini Live loop requires GEMINI_API_KEY to be set."
+            )
         retry_delay = 1
         is_reconnect = False
         
@@ -1275,6 +1285,11 @@ class AudioLoop:
                         pass
 
 def get_input_devices():
+    if pyaudio is None:
+        raise RuntimeError(
+            "Audio device enumeration requires the 'pyaudio' package. "
+            "Install it with `pip install pyaudio`."
+        )
     p = pyaudio.PyAudio()
     info = p.get_host_api_info_by_index(0)
     numdevices = info.get('deviceCount')
@@ -1286,6 +1301,11 @@ def get_input_devices():
     return devices
 
 def get_output_devices():
+    if pyaudio is None:
+        raise RuntimeError(
+            "Audio device enumeration requires the 'pyaudio' package. "
+            "Install it with `pip install pyaudio`."
+        )
     p = pyaudio.PyAudio()
     info = p.get_host_api_info_by_index(0)
     numdevices = info.get('deviceCount')
