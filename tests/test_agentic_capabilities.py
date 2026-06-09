@@ -13,11 +13,22 @@ import pytest
 
 from agentic_dispatch import AGENTIC_TOOL_NAMES, dispatch_agentic_tool
 from agents.slash_commands import SlashCommandRegistry
-from agents.self_healing_coder import SelfHealingCoder, self_heal_code, heuristic_fixer
+from agents.self_healing_coder import SelfHealingCoder, self_heal_code, heuristic_fixer, openrouter_fixer
 from agents.sop_generator import generate_sop
 from agents.company_orchestrator import CompanyOrchestrator
 from integrations.mcp_client import MCPClient
 from integrations.adaptive_scraper import AdaptiveScraper, _extract
+from llm.openrouter_client import OpenRouterClient, openrouter_client
+
+
+@pytest.fixture(autouse=True)
+def _disable_openrouter(monkeypatch):
+    """Keep the bulk of the suite hermetic: disable live OpenRouter calls.
+
+    Tests that exercise the OpenRouter-backed paths re-enable it explicitly and
+    mock the transport, so nothing here ever hits the network.
+    """
+    monkeypatch.setattr(openrouter_client, "api_key", "")
 
 
 # ---------------------------------------------------------------------------
@@ -246,3 +257,88 @@ class TestAgenticDispatch:
 
         declared = {fd["name"] for fd in tools_list[0]["function_declarations"]}
         assert AGENTIC_TOOL_NAMES <= declared
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter client + LLM-backed paths (transport mocked, no network)
+# ---------------------------------------------------------------------------
+class TestOpenRouterClient:
+    def test_disabled_without_key(self):
+        client = OpenRouterClient(api_key="")
+        assert client.enabled is False
+        assert client.complete([{"role": "user", "content": "hi"}]) is None
+
+    def test_default_model_is_opus(self):
+        client = OpenRouterClient(api_key="k")
+        assert "opus" in client.model.lower()
+
+    def test_complete_parses_choice(self, monkeypatch):
+        client = OpenRouterClient(api_key="k")
+        monkeypatch.setattr(
+            client, "_post",
+            lambda url, payload, headers: {"choices": [{"message": {"content": "hello world"}}]},
+        )
+        assert client.complete([{"role": "user", "content": "hi"}]) == "hello world"
+
+    def test_complete_returns_none_on_transport_error(self, monkeypatch):
+        client = OpenRouterClient(api_key="k")
+
+        def boom(url, payload, headers):
+            raise OSError("network down")
+
+        monkeypatch.setattr(client, "_post", boom)
+        assert client.complete([{"role": "user", "content": "hi"}]) is None
+
+    def test_prompt_builds_system_and_user(self, monkeypatch):
+        client = OpenRouterClient(api_key="k")
+        captured = {}
+
+        def fake_post(url, payload, headers):
+            captured["payload"] = payload
+            return {"choices": [{"message": {"content": "ok"}}]}
+
+        monkeypatch.setattr(client, "_post", fake_post)
+        client.prompt("sys", "usr")
+        roles = [m["role"] for m in captured["payload"]["messages"]]
+        assert roles == ["system", "user"]
+
+
+class TestOpenRouterBackedPaths:
+    def test_self_healing_uses_openrouter_when_heuristic_cannot(self, monkeypatch):
+        # Enable + mock so the failing snippet gets "repaired" by the LLM.
+        monkeypatch.setattr(openrouter_client, "api_key", "k")
+        monkeypatch.setattr(
+            openrouter_client, "prompt",
+            lambda system, user, **kw: "print('healed by opus')",
+        )
+        result = self_heal_code("raise RuntimeError('boom')", max_iterations=3)
+        assert result["success"] is True
+        assert "healed by opus" in result["stdout"]
+
+    def test_openrouter_fixer_strips_code_fences(self, monkeypatch):
+        monkeypatch.setattr(openrouter_client, "api_key", "k")
+        monkeypatch.setattr(
+            openrouter_client, "prompt",
+            lambda system, user, **kw: "```python\nprint('x')\n```",
+        )
+        fixed = openrouter_fixer("broken", "Traceback ...")
+        assert fixed == "print('x')"
+
+    def test_company_worker_uses_openrouter(self, monkeypatch):
+        monkeypatch.setattr(openrouter_client, "api_key", "k")
+        monkeypatch.setattr(openrouter_client, "prompt", lambda system, user, **kw: "DELIVERABLE")
+        company = CompanyOrchestrator()
+        result = company.execute("Build the backend API")
+        eng_tasks = [t for t in result["tasks"] if t["role"] == "engineering"]
+        assert eng_tasks and eng_tasks[0]["result"]["engine"] == "openrouter"
+        assert eng_tasks[0]["result"]["output"] == "DELIVERABLE"
+
+    def test_sop_uses_openrouter_markdown(self, monkeypatch):
+        monkeypatch.setattr(openrouter_client, "api_key", "k")
+        monkeypatch.setattr(openrouter_client, "prompt", lambda system, user, **kw: "# Polished SOP\n1. Do it")
+        result = generate_sop("do a then b", title="Test")
+        assert result["engine"] == "openrouter"
+        assert result["markdown"] == "# Polished SOP\n1. Do it"
+        # Deterministic structure is still present.
+        assert result["step_count"] >= 1
+        assert "deterministic_markdown" in result

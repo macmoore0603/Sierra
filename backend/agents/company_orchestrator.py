@@ -69,12 +69,36 @@ class CompanyRun:
 
 
 def _default_worker(role: str) -> Worker:
+    """A role worker backed by OpenRouter (Opus), with a deterministic fallback.
+
+    When ``OPENROUTER_API_KEY`` is set, the department "lead" actually reasons
+    about the task and returns a concrete deliverable; otherwise it returns a
+    structured brief so the orchestrator still works offline / in tests.
+    """
+
     def worker(task: str, context: Dict) -> Dict:
+        try:
+            from llm.openrouter_client import openrouter_client
+        except ImportError:
+            openrouter_client = None  # type: ignore
+
+        if openrouter_client is not None and openrouter_client.enabled:
+            system = (
+                f"You are the {role} lead at a fast-moving startup run by an AI CEO. "
+                f"Given a task, produce a concise, concrete deliverable or plan a "
+                f"teammate could act on immediately. Be specific; no fluff."
+            )
+            extra = f"\n\nContext: {context}" if context else ""
+            output = openrouter_client.prompt(system, f"Task: {task}{extra}")
+            if output:
+                return {"status": "ok", "role": role, "task": task, "output": output, "engine": "openrouter"}
+
         return {
             "status": "ok",
             "role": role,
             "task": task,
             "brief": f"As the {role} lead, deliver: {task}",
+            "engine": "fallback",
         }
 
     return worker

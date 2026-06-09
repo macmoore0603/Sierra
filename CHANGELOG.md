@@ -22,7 +22,13 @@ Six new agentic capabilities, each wired into the Gemini tool surface
 - **AI-company orchestrator** (`backend/agents/company_orchestrator.py`): decompose an
   objective into role-scoped tasks (eng/design/marketing/finance/ops/research),
   delegate to department workers, return a Kanban-style report.
-- Tests in `tests/test_agentic_capabilities.py` (33 cases, no network/heavy deps).
+- **OpenRouter (Claude Opus) backing** (`backend/llm/openrouter_client.py`): the
+  reasoning-heavy capabilities (self-healing code fixer, AI-company role workers, SOP
+  polishing) call OpenRouter with `anthropic/claude-opus-4.8` by default. Stdlib-only
+  client; degrades gracefully to deterministic logic when `OPENROUTER_API_KEY` is unset
+  or a call fails. Configurable via `OPENROUTER_MODEL` / `OPENROUTER_MAX_TOKENS`
+  (default 1024 to stay within small account balances).
+- Tests in `tests/test_agentic_capabilities.py` (42 cases, no network/heavy deps).
 
 ## [Unreleased] - Pervasive God Mode Update (late May 2026)
 

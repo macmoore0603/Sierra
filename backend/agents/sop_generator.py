@@ -29,7 +29,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 _VAGUE_MARKERS = [
     "handle it", "deal with", "the stuff", "etc", "and so on", "somehow",
@@ -125,18 +125,46 @@ class SOP:
         return "\n".join(lines) + "\n"
 
 
-def generate_sop(transcript: str, title: str = "") -> Dict:
+def _llm_polish(transcript: str, title: str) -> Optional[str]:
+    """Use OpenRouter (Opus) to produce a polished SOP, or None if unavailable."""
+    try:
+        from llm.openrouter_client import openrouter_client
+    except ImportError:
+        return None
+    if not openrouter_client.enabled:
+        return None
+
+    system = (
+        "You are an operations expert. Turn the user's rough description of a "
+        "process into a clean Standard Operating Procedure in Markdown: a short "
+        "purpose line, numbered steps with clear actions and done-criteria, an "
+        "'Open questions' section for anything ambiguous, and an 'Automation "
+        "opportunities' section. Be concise and concrete."
+    )
+    user = f"Title: {title}\n\nRough description:\n{transcript}"
+    return openrouter_client.prompt(system, user, temperature=0.3)
+
+
+def generate_sop(transcript: str, title: str = "", use_llm: bool = True) -> Dict:
     """Build a structured SOP from a transcript/brain-dump.
 
-    Returns a dict with the parsed steps and a rendered Markdown document.
+    The deterministic parser always runs (it backs the structured ``steps`` and
+    the flags that callers/tests rely on). When OpenRouter is configured, a
+    polished Markdown SOP is additionally produced and used as the primary
+    ``markdown`` output; otherwise the deterministic Markdown is used.
     """
     title = title.strip() or "Untitled Procedure"
     raw_steps = _split_steps(transcript)
     steps = [_analyze_step(i + 1, text) for i, text in enumerate(raw_steps)]
     sop = SOP(title=title, steps=steps, created_at=datetime.now().isoformat(timespec="seconds"))
+    deterministic_md = sop.to_markdown()
+
+    llm_md = _llm_polish(transcript, title) if use_llm else None
+
     return {
         "status": "ok",
         "title": title,
+        "engine": "openrouter" if llm_md else "deterministic",
         "step_count": len(steps),
         "needs_clarification": [s.number for s in steps if s.vague],
         "automatable": [s.number for s in steps if s.automatable],
@@ -144,5 +172,6 @@ def generate_sop(transcript: str, title: str = "") -> Dict:
             {"number": s.number, "text": s.text, "vague": s.vague, "automatable": s.automatable, "notes": s.notes}
             for s in steps
         ],
-        "markdown": sop.to_markdown(),
+        "markdown": llm_md or deterministic_md,
+        "deterministic_markdown": deterministic_md,
     }

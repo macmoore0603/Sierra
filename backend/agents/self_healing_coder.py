@@ -59,6 +59,56 @@ _AUTO_IMPORTS = {
 }
 
 
+def _strip_code_fences(text: str) -> str:
+    """Pull code out of a ```python ... ``` block if the model wrapped it."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        # Drop the opening fence (``` or ```python) and the closing fence.
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        return "\n".join(lines).strip()
+    return stripped
+
+
+def openrouter_fixer(code: str, stderr: str) -> Optional[str]:
+    """Repair code with OpenRouter (Claude Opus). Returns None if unavailable."""
+    try:
+        from llm.openrouter_client import openrouter_client
+    except ImportError:
+        return None
+    if not openrouter_client.enabled:
+        return None
+
+    system = (
+        "You are an expert Python debugger. You are given a Python program and the "
+        "stderr from running it. Return ONLY the corrected, complete Python program "
+        "that fixes the error. No explanations, no markdown fences."
+    )
+    user = f"# Program\n{code}\n\n# stderr\n{stderr}\n\n# Corrected program:"
+    result = openrouter_client.prompt(system, user, temperature=0.0)
+    if not result:
+        return None
+    fixed = _strip_code_fences(result)
+    return fixed or None
+
+
+def make_fixer(use_llm: bool = True) -> Fixer:
+    """Build the default fixer: try heuristics first, then OpenRouter (Opus)."""
+
+    def fixer(code: str, stderr: str) -> Optional[str]:
+        repaired = heuristic_fixer(code, stderr)
+        if repaired and repaired != code:
+            return repaired
+        if use_llm:
+            return openrouter_fixer(code, stderr)
+        return None
+
+    return fixer
+
+
 def heuristic_fixer(code: str, stderr: str) -> Optional[str]:
     """Best-effort, dependency-free repairs for the most common failures.
 
@@ -88,7 +138,8 @@ class SelfHealingCoder:
     """Runs a write/run/fix/retry loop over a snippet of Python."""
 
     def __init__(self, fixer: Optional[Fixer] = None, max_iterations: int = 5, timeout: float = 15.0):
-        self.fixer = fixer or heuristic_fixer
+        # Default: heuristics first, then OpenRouter (Opus) for general repairs.
+        self.fixer = fixer or make_fixer()
         self.max_iterations = max_iterations
         self.timeout = timeout
 
