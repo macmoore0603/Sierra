@@ -24,6 +24,7 @@ if sys.version_info < (3, 11, 0):
 
 from tools import tools_list
 from execution_policy import requires_confirmation
+from agentic_dispatch import AGENTIC_TOOL_NAMES, dispatch_agentic_tool
 
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
@@ -813,7 +814,7 @@ class AudioLoop:
                         print("The tool was called")
                         function_responses = []
                         for fc in response.tool_call.function_calls:
-                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "switch_project", "list_projects", "list_smart_devices", "control_light", "discover_printers", "print_stl", "get_print_status", "iterate_cad"]:
+                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "switch_project", "list_projects", "list_smart_devices", "control_light", "discover_printers", "print_stl", "get_print_status", "iterate_cad"] or fc.name in AGENTIC_TOOL_NAMES:
                                 prompt = fc.args.get("prompt", "") # Prompt is not present for all tools
                                 
                                 # Real-time execution policy (see execution_policy.py
@@ -1212,6 +1213,15 @@ class AudioLoop:
                                         id=fc.id, name=fc.name, response={"result": result_str}
                                     )
                                     function_responses.append(function_response)
+
+                                elif fc.name in AGENTIC_TOOL_NAMES:
+                                    print(f"[Sierra DEBUG] [TOOL] Agentic tool: '{fc.name}'")
+                                    result = await asyncio.to_thread(
+                                        dispatch_agentic_tool, fc.name, dict(fc.args or {})
+                                    )
+                                    function_responses.append(types.FunctionResponse(
+                                        id=fc.id, name=fc.name, response={"result": result}
+                                    ))
                         if function_responses:
                             await self.session.send_tool_response(function_responses=function_responses)
                 
