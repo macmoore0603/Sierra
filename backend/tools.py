@@ -264,6 +264,127 @@ update_memory_tool = {
 }
 
 # =============================================================================
+# AGENTIC CAPABILITY UPGRADES
+# (MCP, slash commands, self-healing code, SOP generation, adaptive scraping,
+#  AI-company orchestration). Implementations live in backend/integrations/ and
+#  backend/agents/.
+# =============================================================================
+
+use_mcp_tool = {
+    "name": "use_mcp_tool",
+    "description": "Connect to an external MCP (Model Context Protocol) server and call one of its tools, or list available servers/tools. Use to reach research backends, adaptive scrapers, browser-use agents, and other MCP-compatible services.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "action": {
+                "type": "STRING",
+                "description": "One of: list_servers, list_tools, call_tool."
+            },
+            "server": {
+                "type": "STRING",
+                "description": "Name of the registered MCP server (required for list_tools/call_tool)."
+            },
+            "tool": {
+                "type": "STRING",
+                "description": "Tool name to invoke on the server (required for call_tool)."
+            },
+            "arguments": {
+                "type": "STRING",
+                "description": "JSON object of arguments for the tool call (for call_tool)."
+            }
+        },
+        "required": ["action"]
+    }
+}
+
+run_slash_command_tool = {
+    "name": "run_slash_command",
+    "description": "Run a Claude-Code-style slash command: /handoff, /loop, /code-review, /verify, /run, /init, /security-review, /help. Drives common dev workflows without re-typing prompts.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "command": {
+                "type": "STRING",
+                "description": "The full slash command string, e.g. '/code-review deep src/app.py'."
+            }
+        },
+        "required": ["command"]
+    }
+}
+
+self_healing_code_tool = {
+    "name": "self_healing_code",
+    "description": "Run a Python snippet in a self-healing loop: execute, read errors, auto-repair, and retry until it works or the retry budget is exhausted. For sandboxed/dev use.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "code": {
+                "type": "STRING",
+                "description": "The Python code to run and repair."
+            },
+            "max_iterations": {
+                "type": "INTEGER",
+                "description": "Maximum number of fix/retry attempts (default 5)."
+            }
+        },
+        "required": ["code"]
+    }
+}
+
+generate_sop_tool = {
+    "name": "generate_sop",
+    "description": "Turn a voice-note transcript or brain-dump into a structured Standard Operating Procedure: extracts steps, flags vague ones, and highlights automation opportunities.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "transcript": {
+                "type": "STRING",
+                "description": "The free-form description of the process to formalize."
+            },
+            "title": {
+                "type": "STRING",
+                "description": "Optional title for the procedure."
+            }
+        },
+        "required": ["transcript"]
+    }
+}
+
+scrape_web_tool = {
+    "name": "scrape_web",
+    "description": "Fetch a web page and extract its title, text, and links using a resilient, self-adjusting cascade (Scrapling -> BeautifulSoup -> stdlib) with retries. Robust to layout changes.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "url": {
+                "type": "STRING",
+                "description": "The http(s) URL to scrape."
+            },
+            "max_chars": {
+                "type": "INTEGER",
+                "description": "Maximum characters of extracted text to return (default 5000)."
+            }
+        },
+        "required": ["url"]
+    }
+}
+
+run_company_tool = {
+    "name": "run_company",
+    "description": "Run the 'AI company' orchestrator: decompose a high-level objective into role-scoped tasks (engineering, design, marketing, finance, ops, research), delegate each to the right department agent, and return a Kanban-style status report.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "objective": {
+                "type": "STRING",
+                "description": "The high-level goal for the AI company to execute."
+            }
+        },
+        "required": ["objective"]
+    }
+}
+
+# =============================================================================
 # SAFETY & UTILITY
 # =============================================================================
 
@@ -305,6 +426,13 @@ tools_list = [{"function_declarations": [
     # Memory & Self-Improvement
     query_memory_tool,
     update_memory_tool,
+    # Agentic capability upgrades
+    use_mcp_tool,
+    run_slash_command_tool,
+    self_healing_code_tool,
+    generate_sop_tool,
+    scrape_web_tool,
+    run_company_tool,
     # Safety
     confirm_action_tool
 ]}]

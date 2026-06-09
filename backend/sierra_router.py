@@ -237,6 +237,62 @@ SIERRA_TOOLS: List[Dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "scrape_web",
+            "description": (
+                "Fetch a web page and extract its text/links (resilient, "
+                "self-adjusting scraper). Use for 'scrape', 'extract from', "
+                "'read this page'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The http(s) URL."},
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_sop",
+            "description": (
+                "Turn a spoken/typed description of a process into a "
+                "structured SOP. Use for 'write an SOP', 'document this "
+                "procedure', 'turn this into steps'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "transcript": {"type": "string", "description": "The process description."},
+                    "title": {"type": "string", "description": "Optional title."},
+                },
+                "required": ["transcript"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_company",
+            "description": (
+                "Decompose a high-level business objective and delegate to "
+                "role agents (eng, design, marketing, finance, ops, research). "
+                "Use for 'run my company', 'launch a business', 'manage these "
+                "tasks across the team'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "objective": {"type": "string", "description": "The high-level goal."},
+                },
+                "required": ["objective"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "chat",
             "description": (
                 "Fallback: anything conversational, multimodal, or that "
