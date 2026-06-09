@@ -28,7 +28,18 @@ Six new agentic capabilities, each wired into the Gemini tool surface
   client; degrades gracefully to deterministic logic when `OPENROUTER_API_KEY` is unset
   or a call fails. Configurable via `OPENROUTER_MODEL` / `OPENROUTER_MAX_TOKENS`
   (default 1024 to stay within small account balances).
-- Tests in `tests/test_agentic_capabilities.py` (42 cases, no network/heavy deps).
+- **Local code/security review engine** (`backend/agents/code_review.py`, **no API**):
+  AST + regex static analysis (dangerous `eval`/`exec`, `os.system`, `subprocess(shell=True)`,
+  bare/`pass` excepts, unsafe `pickle`/`yaml.load`, mutable defaults, hardcoded
+  secrets/AWS-keys/private-keys, tech-debt markers). Backs `/code-review` and
+  `/security-review`, which now return real findings for a file/dir/source.
+- **Executable `/run` + `/verify`** (no API): slash commands now actually run the given
+  command in a bounded subprocess (no shell, timeout, capped output) and report
+  pass/fail, instead of only emitting instructions.
+- **Expanded self-healing heuristics** (no API): more stdlib auto-imports, Python-2
+  `print` statement → `print(...)`, and tab/space normalization — so the loop repairs
+  common failures without any model call.
+- Tests in `tests/test_agentic_capabilities.py` (59 cases, no network/heavy deps).
 
 ## [Unreleased] - Pervasive God Mode Update (late May 2026)
 

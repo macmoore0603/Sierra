@@ -9,10 +9,13 @@ Tests for Sierra's agentic capability upgrades:
 - The central agentic dispatcher + tool declarations
 """
 
+import sys
+
 import pytest
 
 from agentic_dispatch import AGENTIC_TOOL_NAMES, dispatch_agentic_tool
 from agents.slash_commands import SlashCommandRegistry
+from agents.code_review import review, review_source
 from agents.self_healing_coder import SelfHealingCoder, self_heal_code, heuristic_fixer, openrouter_fixer
 from agents.sop_generator import generate_sop
 from agents.company_orchestrator import CompanyOrchestrator
@@ -342,3 +345,98 @@ class TestOpenRouterBackedPaths:
         # Deterministic structure is still present.
         assert result["step_count"] >= 1
         assert "deterministic_markdown" in result
+
+
+# ---------------------------------------------------------------------------
+# Local code-review / security-review engine (no API, no network)
+# ---------------------------------------------------------------------------
+class TestCodeReview:
+    def test_detects_dangerous_calls(self):
+        res = review_source("x = eval(input())\n")
+        rules = {f["rule"] for f in res["findings"]}
+        assert "dangerous-call" in rules
+
+    def test_detects_hardcoded_secret(self):
+        res = review_source("api_key = 'supersecretvalue123'\n")
+        rules = {f["rule"] for f in res["findings"]}
+        assert "hardcoded-secret" in rules
+
+    def test_detects_shell_true_and_bare_except(self):
+        src = "import subprocess\ntry:\n    subprocess.run('ls', shell=True)\nexcept:\n    pass\n"
+        rules = {f["rule"] for f in review_source(src)["findings"]}
+        assert "shell-true" in rules
+        assert "bare-except" in rules
+
+    def test_security_only_drops_tech_debt(self):
+        src = "# TODO: clean this up\nx = 1\n"
+        full = {f["rule"] for f in review_source(src)["findings"]}
+        sec = {f["rule"] for f in review_source(src, security_only=True)["findings"]}
+        assert "tech-debt" in full
+        assert "tech-debt" not in sec
+
+    def test_clean_code_has_no_findings(self):
+        res = review_source("def add(a, b):\n    return a + b\n")
+        assert res["finding_count"] == 0
+
+    def test_syntax_error_reported(self):
+        res = review_source("def broken(:\n")
+        assert any(f["rule"] == "syntax-error" for f in res["findings"])
+
+    def test_review_path_on_directory(self, tmp_path):
+        (tmp_path / "a.py").write_text("import os\nos.system('echo hi')\n")
+        res = review(str(tmp_path))
+        assert res["status"] == "ok"
+        assert res["files_reviewed"] == 1
+        assert any(f["rule"] == "os-system" for f in res["findings"])
+
+    def test_review_skips_non_path_non_source(self):
+        assert review("current diff")["status"] == "skipped"
+
+
+class TestSlashCommandExecution:
+    def setup_method(self):
+        self.reg = SlashCommandRegistry()
+
+    def test_run_executes_command(self):
+        res = self.reg.dispatch(f"/run {sys.executable} -c \"print('hello-run')\"")
+        assert res["execution"]["executed"] is True
+        assert res["execution"]["returncode"] == 0
+        assert "hello-run" in res["execution"]["stdout"]
+
+    def test_verify_passes_on_success(self):
+        res = self.reg.dispatch(f"/verify {sys.executable} -c \"import sys; sys.exit(0)\"")
+        assert res["passed"] is True
+
+    def test_verify_fails_on_nonzero(self):
+        res = self.reg.dispatch(f"/verify {sys.executable} -c \"import sys; sys.exit(3)\"")
+        assert res["passed"] is False
+        assert res["execution"]["returncode"] == 3
+
+    def test_run_unknown_command_reports_error(self):
+        res = self.reg.dispatch("/run this_command_does_not_exist_xyz")
+        assert res["execution"]["executed"] is False
+
+    def test_code_review_runs_local_analysis(self):
+        res = self.reg.dispatch("/code-review deep x", context={"source": "y = eval('1')\n"})
+        assert "analysis" in res
+        assert res["analysis"]["finding_count"] >= 1
+
+    def test_security_review_runs_local_analysis(self):
+        res = self.reg.dispatch("/security-review", context={"source": "password = 'hunter2hunter2'\n"})
+        assert "analysis" in res
+        rules = {f["rule"] for f in res["analysis"]["findings"]}
+        assert "hardcoded-secret" in rules
+
+
+class TestHeuristicFixerExtras:
+    def test_fixes_python2_print(self):
+        fixed = heuristic_fixer("print 'hi'\n", "SyntaxError: Missing parentheses in call to 'print'")
+        assert fixed == "print('hi')\n"
+
+    def test_normalizes_tabs(self):
+        fixed = heuristic_fixer("if True:\n\tprint(1)\n", "TabError: inconsistent use of tabs and spaces")
+        assert "\t" not in fixed
+
+    def test_autoimports_extended_module(self):
+        fixed = heuristic_fixer("print(pathlib.Path('.'))\n", "NameError: name 'pathlib' is not defined")
+        assert fixed.startswith("import pathlib\n")

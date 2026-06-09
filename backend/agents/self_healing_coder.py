@@ -56,6 +56,8 @@ Fixer = Callable[[str, str], Optional[str]]
 _AUTO_IMPORTS = {
     "math", "os", "sys", "json", "re", "random", "time", "datetime",
     "itertools", "collections", "functools", "statistics",
+    "string", "pathlib", "typing", "decimal", "fractions", "heapq",
+    "bisect", "textwrap", "hashlib", "base64", "copy", "csv", "io",
 }
 
 
@@ -130,6 +132,20 @@ def heuristic_fixer(code: str, stderr: str) -> Optional[str]:
         module = m.group(1)
         if not re.search(rf"^\s*import\s+{module}\b", code, re.MULTILINE):
             return f"import {module}\n" + code
+
+    # Python-2 print statement -> print(...).  SyntaxError text:
+    # "Missing parentheses in call to 'print'"
+    if "Missing parentheses in call to 'print'" in stderr:
+        fixed = re.sub(r"^(\s*)print\s+(?!\()(.+)$",
+                       r"\1print(\2)", code, flags=re.MULTILINE)
+        if fixed != code:
+            return fixed
+
+    # TabError: inconsistent use of tabs and spaces -> normalize tabs to 4 spaces.
+    if "inconsistent use of tabs" in stderr or "TabError" in stderr:
+        fixed = code.replace("\t", "    ")
+        if fixed != code:
+            return fixed
 
     return None
 

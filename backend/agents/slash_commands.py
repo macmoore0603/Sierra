@@ -29,9 +29,18 @@ from __future__ import annotations
 
 import os
 import shlex
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
+
+try:
+    from agents.code_review import review as _review_code
+except ImportError:  # pragma: no cover - allow running as a top-level module
+    try:
+        from code_review import review as _review_code  # type: ignore
+    except ImportError:
+        _review_code = None  # type: ignore
 
 try:
     from memory import memory as sierra_memory
@@ -151,7 +160,7 @@ class SlashCommandRegistry:
         level = bits[0].lower() if bits and bits[0].lower() in valid else "standard"
         target = (bits[1] if len(bits) > 1 else arg) if level in valid else arg
         target = target or ctx.get("target", "current diff")
-        return {
+        result: Dict[str, Any] = {
             "status": "ok",
             "command": "code-review",
             "effort_level": level,
@@ -161,26 +170,75 @@ class SlashCommandRegistry:
                 f"style and edge-case issues; suggest concrete fixes."
             ),
         }
+        # Run the local (no-API) static analyzer when we have source or a real path.
+        if _review_code is not None:
+            review = _review_code(target, source=ctx.get("source"))
+            if review.get("status") != "skipped":
+                result["analysis"] = review
+        return result
+
+    def _execute(self, command: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        """Run ``command`` locally (no shell), capturing bounded output.
+
+        Returns an execution record. Used by ``/run`` and ``/verify`` so they
+        actually do something offline rather than only emitting instructions.
+        """
+        try:
+            argv = shlex.split(command)
+        except ValueError as exc:
+            return {"executed": False, "error": f"Could not parse command: {exc}"}
+        if not argv:
+            return {"executed": False, "error": "Empty command"}
+
+        cwd = ctx.get("cwd") or os.getcwd()
+        timeout = float(ctx.get("timeout", 30))
+        try:
+            proc = subprocess.run(
+                argv, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            )
+        except FileNotFoundError:
+            return {"executed": False, "error": f"Command not found: {argv[0]}"}
+        except subprocess.TimeoutExpired:
+            return {"executed": False, "error": f"Timed out after {timeout}s", "timed_out": True}
+
+        cap = int(ctx.get("output_limit", 8000))
+        return {
+            "executed": True,
+            "argv": argv,
+            "cwd": cwd,
+            "returncode": proc.returncode,
+            "stdout": proc.stdout[-cap:],
+            "stderr": proc.stderr[-cap:],
+        }
 
     def _cmd_verify(self, arg: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
         command = arg or ctx.get("command", "")
-        return {
+        result: Dict[str, Any] = {
             "status": "ok",
             "command": "verify",
-            "delegate_to": "self_healing_coder" if command else "manual",
             "run_command": command,
             "instructions": "Run the project/command, observe behavior, and confirm the change works.",
         }
+        if command:
+            execution = self._execute(command, ctx)
+            result["execution"] = execution
+            result["passed"] = bool(execution.get("executed") and execution.get("returncode") == 0)
+        else:
+            result["delegate_to"] = "manual"
+        return result
 
     def _cmd_run(self, arg: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
         command = arg or ctx.get("command", "")
-        return {
+        result: Dict[str, Any] = {
             "status": "ok",
             "command": "run",
             "run_command": command,
             "argv": shlex.split(command) if command else [],
             "instructions": "Launch the project so changes can be observed live.",
         }
+        if command:
+            result["execution"] = self._execute(command, ctx)
+        return result
 
     def _cmd_init(self, arg: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
         root = arg or ctx.get("root", os.getcwd())
@@ -204,7 +262,7 @@ class SlashCommandRegistry:
 
     def _cmd_security_review(self, arg: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
         target = arg or ctx.get("target", "pending changes")
-        return {
+        result: Dict[str, Any] = {
             "status": "ok",
             "command": "security-review",
             "target": target,
@@ -217,6 +275,12 @@ class SlashCommandRegistry:
             ],
             "instructions": f"Perform a security review of '{target}' against the checklist.",
         }
+        # Run the local (no-API) security analyzer (security findings only).
+        if _review_code is not None:
+            review = _review_code(target, security_only=True, source=ctx.get("source"))
+            if review.get("status") != "skipped":
+                result["analysis"] = review
+        return result
 
 
 # Module-level singleton.
