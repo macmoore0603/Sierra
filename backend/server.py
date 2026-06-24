@@ -673,5 +673,24 @@ async def user_input(sid, data):
                 await audio_loop.session.send(input=audio_loop._latest_image_payload, end_of_turn=False)
             except Exception as e:
                 print(f"[SERVER DEBUG] Failed to send piggyback frame: {e}")
-                
-        a
+
+        # Forward the text turn to the live Gemini session.
+        try:
+            await audio_loop.session.send(input=text, end_of_turn=True)
+            print("[SERVER DEBUG] Text sent to session successfully.")
+        except Exception as e:
+            print(f"[SERVER DEBUG] Failed to send text to session: {e}")
+            await sio.emit('error', {'msg': f"Failed to send message: {e}"})
+
+
+# --- Entry point -------------------------------------------------------------
+# Electron spawns `python server.py`, and the mobile app needs to reach this
+# backend over the LAN. SIERRA_HOST controls the bind address:
+#   * 127.0.0.1 (default) — localhost only (desktop app on the same machine)
+#   * 0.0.0.0             — listen on the LAN so the Sierra mobile app can sync
+# Set SIERRA_HOST=0.0.0.0 when you want to connect from your phone.
+if __name__ == "__main__":
+    host = os.getenv("SIERRA_HOST", "127.0.0.1")
+    port = int(os.getenv("SIERRA_PORT", "8000"))
+    print(f"[SERVER] Starting Sierra backend on {host}:{port}")
+    uvicorn.run(app_socketio, host=host, port=port)
