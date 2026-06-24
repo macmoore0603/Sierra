@@ -24,7 +24,53 @@ desktop frontend uses — FastAPI + Socket.IO on port `8000` (`backend/server.py
 This means anything you say to Sierra on the computer shows up on the phone, and
 anything you do on the phone is reflected on the computer.
 
-## Setup
+## 📲 Get it on your phone
+
+There are two ways, depending on whether you want the instant route or a real
+installable app icon.
+
+### Option A — Expo Go (instant, no build, no accounts)
+
+Best for using it right now.
+
+1. Install **Expo Go** on your phone: [iOS App Store](https://apps.apple.com/app/expo-go/id982107779) · [Google Play](https://play.google.com/store/apps/details?id=host.exp.exponent).
+2. On the computer running Sierra:
+   ```bash
+   cd mobile
+   ./scripts/get-on-phone.sh --with-backend
+   ```
+   (or `npm install && npm start` if you prefer to start the backend yourself).
+3. **iPhone:** open the Camera app and point it at the QR code → tap the banner.
+   **Android:** open Expo Go → *Scan QR code*.
+4. The Sierra app loads and auto-discovers your computer on the Wi-Fi.
+
+If your phone and computer are on different networks (or a locked-down Wi-Fi),
+run `./scripts/get-on-phone.sh --tunnel` and the QR will work over the internet.
+
+### Option B — Install a real standalone app (EAS Build)
+
+Best for a permanent app icon you tap like any other app. This builds a signed
+binary in Expo's cloud and gives you a **download link**.
+
+```bash
+cd mobile
+npm install
+npm install -g eas-cli
+eas login          # free Expo account
+eas init           # links the project (writes the EAS projectId)
+npm run build:apk  # Android → downloadable .apk you install directly
+# iOS:  npm run build:ios   (requires an Apple Developer account)
+```
+
+When the build finishes, EAS prints a URL (and emails it). Open that link on the
+**Android** phone and tap the `.apk` to install. iOS installs go through
+TestFlight/ad-hoc provisioning, which is why an Apple Developer account is needed.
+
+> Why no pre-made file here? A signed `.ipa`/`.apk` is tied to *your* Apple /
+> Google / Expo credentials and is produced by a cloud build, so it has to run
+> from your account — the commands above are the one-time setup for that.
+
+## Manual setup
 
 ```bash
 cd mobile
