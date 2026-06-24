@@ -30,6 +30,7 @@ import threading
 import sys
 import os
 import json
+import socket
 from datetime import datetime
 from pathlib import Path
 
@@ -158,9 +159,24 @@ async def startup_event():
     # Preload the local model so the first command is fast.
     asyncio.create_task(asyncio.to_thread(warm_ollama))
 
+    # Advertise on the LAN (mDNS) so the Sierra mobile app can auto-discover
+    # this computer without the user typing an IP. Best-effort.
+    try:
+        import discovery
+        port = int(os.getenv("SIERRA_PORT", "8000"))
+        await asyncio.to_thread(discovery.advertise, port)
+    except Exception as e:
+        print(f"[SERVER] mDNS advertise failed (non-fatal): {e}")
+
 @app.get("/status")
 async def status():
-    return {"status": "running", "service": "Sierra Backend"}
+    # `service` is the signature the mobile app's network scan matches on.
+    return {
+        "status": "running",
+        "service": "Sierra Backend",
+        "name": socket.gethostname().split(".")[0],
+        "port": int(os.getenv("SIERRA_PORT", "8000")),
+    }
 
 
 # --- Text chat endpoint (used by the native macOS app) ---
@@ -610,6 +626,13 @@ async def shutdown(sid, data=None):
     if authenticator:
         print("[SERVER] Stopping Authenticator...")
         authenticator.stop()
+
+    # Stop mDNS advertisement
+    try:
+        import discovery
+        discovery.stop()
+    except Exception:
+        pass
     
     print("[SERVER] Graceful shutdown complete. Terminating process...")
     

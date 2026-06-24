@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSierra } from '../context/SierraContext';
@@ -127,10 +128,32 @@ export default function DashboardScreen() {
       )}
 
       {!s.connected && (
-        <Text style={styles.hint}>
-          Not synced. Open Settings and set the server address to your computer's LAN IP,
-          and make sure the desktop backend runs with --host 0.0.0.0.
-        </Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Not Synced</Text>
+          <Text style={styles.cardBody}>
+            Tap below to find your computer on the Wi-Fi automatically, or set the address in Settings.
+            The desktop backend must run with --host 0.0.0.0.
+          </Text>
+          <TouchableOpacity
+            style={[styles.btn, { backgroundColor: colors.gold, marginTop: 12, alignSelf: 'flex-start' }]}
+            onPress={s.discover}
+            disabled={s.discovering}
+          >
+            {s.discovering ? (
+              <>
+                <ActivityIndicator color="#000" />
+                <Text style={[styles.btnText, { color: '#000' }]}>
+                  {`  Scanning ${Math.round((s.discoveryProgress || 0) * 100)}%`}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="search" size={18} color="#000" />
+                <Text style={[styles.btnText, { color: '#000' }]}>Auto-detect Sierra</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       )}
     </ScrollView>
   );

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import * as Sierra from '../services/SierraAPI';
 import { loadServerUrl, saveServerUrl, getServerUrlSync } from '../services/config';
+import { discoverSierra } from '../services/discovery';
 
 const SierraContext = createContext(null);
 
@@ -30,6 +31,9 @@ export function SierraProvider({ children }) {
   const [project, setProject] = useState(null);
   const [lastError, setLastError] = useState(null);
 
+  const [discovering, setDiscovering] = useState(false);
+  const [discoveryProgress, setDiscoveryProgress] = useState(0); // 0..1
+
   const seenTranscript = useRef(new Set());
 
   const pushMessage = (msg) =>
@@ -47,7 +51,11 @@ export function SierraProvider({ children }) {
       if (!mounted) return;
       setServerUrl(url);
       Sierra.connectSocket();
-      await refreshStatus();
+      const ok = await refreshStatus();
+      // Saved address didn't answer — try to find Sierra on the LAN automatically.
+      if (!ok && mounted) {
+        await discover();
+      }
     };
 
     const unsubs = [
@@ -125,6 +133,28 @@ export function SierraProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Scan the LAN for the Sierra backend and connect to it if found.
+  async function discover() {
+    if (discovering) return null;
+    setDiscovering(true);
+    setDiscoveryProgress(0);
+    try {
+      const found = await discoverSierra((scanned, total) => {
+        setDiscoveryProgress(total ? scanned / total : 0);
+      });
+      if (found && found.url) {
+        await updateServerUrl(found.url);
+        return found;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    } finally {
+      setDiscovering(false);
+      setDiscoveryProgress(0);
+    }
+  }
+
   async function refreshStatus() {
     try {
       const data = await Sierra.checkStatus();
@@ -178,6 +208,7 @@ export function SierraProvider({ children }) {
   const value = {
     // connection
     serverUrl, connected, reachable, serviceName, refreshStatus, updateServerUrl,
+    discover, discovering, discoveryProgress,
     // state
     voiceState, authenticated, lastRoute, messages, activity, devices,
     printStatus, project, lastError,

@@ -23,6 +23,8 @@ streamlit
 
 # Tools & Integrations
 requests
+# LAN service discovery (printer mDNS + Sierra mobile auto-discovery)
+zeroconf
 # For real Google Calendar/Gmail:
 # google-api-python-client
 google-auth

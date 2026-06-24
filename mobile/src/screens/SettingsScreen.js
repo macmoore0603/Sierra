@@ -40,9 +40,47 @@ export default function SettingsScreen() {
     }
   };
 
+  const autoDetect = async () => {
+    const found = await s.discover();
+    if (found) {
+      setUrl(found.url);
+      Alert.alert('Found Sierra ✓', `Connected to ${found.name || 'Sierra'} at ${found.url}.`);
+    } else {
+      Alert.alert(
+        'No Sierra found',
+        'Scanned your Wi-Fi network but found no Sierra backend.\n\nMake sure the desktop app is running with --host 0.0.0.0 and that this phone is on the same Wi-Fi, then try again or enter the address manually.'
+      );
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
       <Text style={styles.section}>CONNECTION</Text>
+
+      <TouchableOpacity
+        style={[styles.btn, styles.autoBtn]}
+        onPress={autoDetect}
+        disabled={s.discovering}
+      >
+        {s.discovering ? (
+          <>
+            <ActivityIndicator color="#000" />
+            <Text style={styles.autoBtnText}>
+              {'  '}Scanning… {Math.round((s.discoveryProgress || 0) * 100)}%
+            </Text>
+          </>
+        ) : (
+          <>
+            <Ionicons name="search" size={18} color="#000" />
+            <Text style={styles.autoBtnText}>{'  '}Auto-detect Sierra on Wi-Fi</Text>
+          </>
+        )}
+      </TouchableOpacity>
+
+      <Text style={[styles.help, { marginTop: 8, marginBottom: 16 }]}>
+        Finds your computer automatically — no IP needed. Or enter it manually below.
+      </Text>
+
       <Text style={styles.label}>Sierra desktop server address</Text>
       <TextInput
         style={styles.input}
@@ -114,6 +152,8 @@ const styles = StyleSheet.create({
   code: { color: colors.gold, fontFamily: 'monospace', fontSize: 12 },
   btnRow: { flexDirection: 'row', marginTop: 16 },
   btn: { flex: 1, paddingVertical: 13, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  autoBtn: { flexDirection: 'row', backgroundColor: colors.gold, marginBottom: 4 },
+  autoBtnText: { color: '#000', fontWeight: '700', fontSize: 15 },
   btnPrimary: { backgroundColor: colors.gold, marginRight: 10 },
   btnPrimaryText: { color: '#000', fontWeight: '700' },
   btnGhost: { borderColor: colors.gold, borderWidth: 1 },

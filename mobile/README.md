@@ -34,18 +34,30 @@ npm start          # then scan the QR with Expo Go, or press i / a
 
 ## Connect to your computer
 
-The backend defaults to **localhost only**. To let your phone reach it:
+The backend defaults to **localhost only**. To let your phone reach it, start it
+bound to the LAN (it then advertises itself via mDNS for auto-discovery):
 
-1. Start the backend bound to the LAN:
-   ```bash
-   cd backend
-   SIERRA_HOST=0.0.0.0 python server.py
-   # or: python -m uvicorn server:app_socketio --host 0.0.0.0 --port 8000
-   ```
-2. Find your computer's LAN IP: `ipconfig getifaddr en0` (macOS).
-3. In the app → **Settings**, set the server address to `http://<that-ip>:8000`
-   and tap **Test**, then **Save & Connect**.
-4. Make sure the phone and computer are on the **same Wi-Fi network**.
+```bash
+cd backend
+SIERRA_HOST=0.0.0.0 python server.py
+# or: python -m uvicorn server:app_socketio --host 0.0.0.0 --port 8000
+```
+
+Then, on the same Wi-Fi network, just open the app:
+
+1. **Automatic (recommended)** — the app auto-scans your Wi-Fi on launch and
+   connects to the Sierra backend it finds. You can also tap **Auto-detect Sierra
+   on Wi-Fi** in Settings (or the **Auto-detect** button on the Dashboard when
+   offline). No IP address needed.
+2. **Manual** — in **Settings**, enter `http://<computer-LAN-IP>:8000`
+   (find it with `ipconfig getifaddr en0` on macOS), tap **Test**, then **Save**.
+
+### How auto-discovery works
+- The backend advertises an mDNS/Bonjour service `_sierra._tcp.local.`
+  (`backend/discovery.py`) for native builds.
+- In Expo Go, the app scans its own `/24` subnet for a host answering
+  `GET /status` with the Sierra signature (`src/services/discovery.js`) — this
+  works without any native modules.
 
 > Security note: binding to `0.0.0.0` exposes the Sierra backend (which runs in
 > God Mode with relaxed confirmations) to everyone on your network. Only do this
