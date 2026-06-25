@@ -33,6 +33,8 @@ if [ ! -d node_modules ]; then
 fi
 
 if [ "$WITH_BACKEND" = "1" ]; then
+  echo "==> Ensuring the backend's LAN-discovery dep (zeroconf) is installed…"
+  python -c "import zeroconf" 2>/dev/null || python -m pip install zeroconf
   echo "==> Starting Sierra backend on the LAN (0.0.0.0:8000)…"
   ( cd ../backend && SIERRA_HOST=0.0.0.0 python server.py ) &
   BACKEND_PID=$!
