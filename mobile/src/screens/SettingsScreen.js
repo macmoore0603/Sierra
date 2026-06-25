@@ -27,13 +27,14 @@ export default function SettingsScreen() {
   const test = async () => {
     setTesting(true);
     try {
-      await s.updateServerUrl(url);
+      const clean = await s.updateServerUrl(url);
+      setUrl(clean);
       const ok = await s.refreshStatus();
       Alert.alert(
         ok ? 'Connected ✓' : 'Could not reach Sierra',
         ok
-          ? `${s.serviceName || 'Sierra Backend'} is up at ${s.serverUrl}.`
-          : `No response from ${s.serverUrl}.\n\nCheck:\n• Phone and computer on the same Wi-Fi\n• Desktop app running\n• Backend started with --host 0.0.0.0\n• Address is the computer's LAN IP:8000`
+          ? `${s.serviceName || 'Sierra Backend'} is up at ${clean}.`
+          : `No response from ${clean}.\n\nCheck:\n• Phone and computer on the same Wi-Fi\n• Desktop app running\n• Backend started with --host 0.0.0.0\n• Address is the computer's LAN IP:8000`
       );
     } finally {
       setTesting(false);

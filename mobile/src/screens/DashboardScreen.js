@@ -38,7 +38,7 @@ export default function DashboardScreen() {
       {/* Connection / system pills */}
       <View style={styles.pillRow}>
         <StatusPill label="LINK" value={s.connected ? 'SYNCED' : 'OFFLINE'} tone={s.connected ? 'green' : 'red'} />
-        <StatusPill label="API" value={s.reachable === null ? '…' : s.reachable ? 'UP' : 'DOWN'} tone={s.reachable ? 'green' : 'red'} />
+        <StatusPill label="API" value={s.reachable === null ? '…' : s.reachable ? 'UP' : 'DOWN'} tone={s.reachable === null ? 'gold' : s.reachable ? 'green' : 'red'} />
         <StatusPill label="HEY SIERRA" value={voiceLabel} tone={voiceTone} />
         <StatusPill label="AUTH" value={s.authenticated ? 'OK' : 'LOCKED'} tone={s.authenticated ? 'green' : 'red'} />
       </View>
@@ -84,7 +84,7 @@ export default function DashboardScreen() {
           <Text style={styles.cardBody}>No Kasa devices reported yet.</Text>
         ) : (
           s.devices.map((d, i) => (
-            <View key={i} style={styles.deviceRow}>
+            <View key={d.ip || d.alias || d.name || i} style={styles.deviceRow}>
               <Ionicons
                 name="bulb"
                 size={16}

@@ -26,6 +26,8 @@ export default function ChatScreen() {
     setSending(true);
     try {
       await s.sendChat(text);
+    } catch (e) {
+      setInput(text); // restore the message so a failed send isn't lost
     } finally {
       setSending(false);
     }

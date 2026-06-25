@@ -703,7 +703,8 @@ async def user_input(sid, data):
             print("[SERVER DEBUG] Text sent to session successfully.")
         except Exception as e:
             print(f"[SERVER DEBUG] Failed to send text to session: {e}")
-            await sio.emit('error', {'msg': f"Failed to send message: {e}"})
+            # Scope the error to the originating client, not every connection.
+            await sio.emit('error', {'msg': f"Failed to send message: {e}"}, room=sid)
 
 
 # --- Entry point -------------------------------------------------------------

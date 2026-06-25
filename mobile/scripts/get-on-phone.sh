@@ -43,8 +43,13 @@ if [ "$WITH_BACKEND" = "1" ]; then
 fi
 
 echo "==> Starting Expo. Scan the QR code with your phone."
-if [ "$MODE" = "tunnel" ]; then
-  exec npx expo start --tunnel
+# When we launched a backend, stay in this shell so the EXIT trap can stop it
+# afterwards; only `exec` (replacing the shell) when there's nothing to clean up.
+EXPO_CMD="npx expo start"
+[ "$MODE" = "tunnel" ] && EXPO_CMD="npx expo start --tunnel"
+
+if [ "$WITH_BACKEND" = "1" ]; then
+  $EXPO_CMD
 else
-  exec npx expo start
+  exec $EXPO_CMD
 fi
