@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Sierra",
+    "slug": "sierra-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "sierra",
+    "splash": {
+      "backgroundColor": "#0D0D0D"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.macmoore.sierra",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.macmoore.sierra",
+      "usesCleartextTraffic": true
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

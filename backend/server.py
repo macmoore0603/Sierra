@@ -30,6 +30,7 @@ import threading
 import sys
 import os
 import json
+import socket
 from datetime import datetime
 from pathlib import Path
 
@@ -158,9 +159,24 @@ async def startup_event():
     # Preload the local model so the first command is fast.
     asyncio.create_task(asyncio.to_thread(warm_ollama))
 
+    # Advertise on the LAN (mDNS) so the Sierra mobile app can auto-discover
+    # this computer without the user typing an IP. Best-effort.
+    try:
+        import discovery
+        port = int(os.getenv("SIERRA_PORT", "8000"))
+        await asyncio.to_thread(discovery.advertise, port)
+    except Exception as e:
+        print(f"[SERVER] mDNS advertise failed (non-fatal): {e}")
+
 @app.get("/status")
 async def status():
-    return {"status": "running", "service": "Sierra Backend"}
+    # `service` is the signature the mobile app's network scan matches on.
+    return {
+        "status": "running",
+        "service": "Sierra Backend",
+        "name": socket.gethostname().split(".")[0],
+        "port": int(os.getenv("SIERRA_PORT", "8000")),
+    }
 
 
 # --- Text chat endpoint (used by the native macOS app) ---
@@ -610,6 +626,13 @@ async def shutdown(sid, data=None):
     if authenticator:
         print("[SERVER] Stopping Authenticator...")
         authenticator.stop()
+
+    # Stop mDNS advertisement
+    try:
+        import discovery
+        discovery.stop()
+    except Exception:
+        pass
     
     print("[SERVER] Graceful shutdown complete. Terminating process...")
     
@@ -673,5 +696,25 @@ async def user_input(sid, data):
                 await audio_loop.session.send(input=audio_loop._latest_image_payload, end_of_turn=False)
             except Exception as e:
                 print(f"[SERVER DEBUG] Failed to send piggyback frame: {e}")
-                
-        a
+
+        # Forward the text turn to the live Gemini session.
+        try:
+            await audio_loop.session.send(input=text, end_of_turn=True)
+            print("[SERVER DEBUG] Text sent to session successfully.")
+        except Exception as e:
+            print(f"[SERVER DEBUG] Failed to send text to session: {e}")
+            # Scope the error to the originating client, not every connection.
+            await sio.emit('error', {'msg': f"Failed to send message: {e}"}, room=sid)
+
+
+# --- Entry point -------------------------------------------------------------
+# Electron spawns `python server.py`, and the mobile app needs to reach this
+# backend over the LAN. SIERRA_HOST controls the bind address:
+#   * 127.0.0.1 (default) — localhost only (desktop app on the same machine)
+#   * 0.0.0.0             — listen on the LAN so the Sierra mobile app can sync
+# Set SIERRA_HOST=0.0.0.0 when you want to connect from your phone.
+if __name__ == "__main__":
+    host = os.getenv("SIERRA_HOST", "127.0.0.1")
+    port = int(os.getenv("SIERRA_PORT", "8000"))
+    print(f"[SERVER] Starting Sierra backend on {host}:{port}")
+    uvicorn.run(app_socketio, host=host, port=port)
