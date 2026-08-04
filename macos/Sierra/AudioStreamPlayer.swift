@@ -63,10 +63,13 @@ final class AudioStreamPlayer {
 
         guard let channel = buffer.floatChannelData?[0] else { return }
         pcm16.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-            let samples = raw.bindMemory(to: Int16.self)
+            // loadUnaligned rather than bindMemory: a Data slice carries no
+            // 2-byte alignment guarantee, and binding a misaligned pointer to
+            // Int16 is undefined behaviour even when it happens to work.
             for i in 0..<sampleCount {
+                let sample = raw.loadUnaligned(fromByteOffset: i * 2, as: Int16.self)
                 // little-endian Int16 -> normalized float [-1, 1]
-                channel[i] = Float(Int16(littleEndian: samples[i])) / 32768.0
+                channel[i] = Float(Int16(littleEndian: sample)) / 32768.0
             }
         }
 

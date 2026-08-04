@@ -194,7 +194,9 @@ final class SierraViewModel: ObservableObject {
     @Published var liveTranscription = ""       // on-device wake-word partials
     @Published var isConnected = false          // socket handshake complete
     @Published var serverStatus = "Connecting…"
-    @Published var voiceStatus = "On-device wake word + Gemini Live"
+    @Published var voiceStatus = "On-device wake word"
+    @Published var isLive = false               // backend Gemini Live session running
+    @Published var isAuthenticated = true
 
     let serverURL = "http://localhost:8000"
     private let wakeWords = ["hey sierra", "hey sira", "hello sierra", "ok sierra", "sierra"]
@@ -210,6 +212,7 @@ final class SierraViewModel: ObservableObject {
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private let synth = AVSpeechSynthesizer()
     private let speechObserver = SpeechEndObserver()
+    private let audioPlayer = AudioStreamPlayer()
 
     private enum Mode: Equatable { case idle, capturing }
     private var mode: Mode = .idle
@@ -241,6 +244,9 @@ final class SierraViewModel: ObservableObject {
     }
 
     func onDisappear() {
+        if isLive { socket.stopAudio() }
+        isLive = false
+        audioPlayer.stop()
         socket.disconnect()
         // Drop the guard first. Stopping the synthesizer fires the cancel
         // callback, and with the utterance still matched that would restart
@@ -262,6 +268,59 @@ final class SierraViewModel: ObservableObject {
             let prefix = realtime ? "⚡️ Executing" : "⏳ Confirm"
             self?.append(text: "\(prefix) \(tool)…", isUser: false, newBubble: true)
         }
+        // These three had no handler at all, so every transcription and every
+        // audio chunk the backend streamed was decoded and then dropped —
+        // AudioStreamPlayer was never even constructed. The live pipeline the
+        // backend implements only reached the socket layer and stopped there.
+        socket.onTranscription = { [weak self] sender, text in
+            // Partials for the same speaker grow one bubble instead of spamming.
+            self?.append(text: text,
+                         isUser: sender.lowercased() == "user",
+                         newBubble: false)
+        }
+        socket.onAudio = { [weak self] pcm in
+            self?.audioPlayer.enqueue(pcm)
+        }
+        socket.onAuthStatus = { [weak self] ok in
+            self?.isAuthenticated = ok
+        }
+    }
+
+    // MARK: Live session (backend Gemini Live, streamed over Socket.IO)
+    //
+    // The on-device recogniser and the backend's live session both want the
+    // microphone, and in live mode Sierra's replies arrive as streamed audio
+    // rather than local TTS. Running both would double-capture the mic and have
+    // Sierra talk over itself, so entering live mode suspends the local loop and
+    // leaves the device to the backend.
+    func toggleLiveSession() {
+        isLive ? stopLiveSession() : startLiveSession()
+    }
+
+    private func startLiveSession() {
+        guard isConnected else {
+            voiceStatus = "Not connected to the backend"
+            return
+        }
+        isLive = true
+        teardownEngine()                       // hand the mic over
+        synth.stopSpeaking(at: .immediate)
+        currentUtterance = nil
+        isSpeaking = false
+        mode = .idle
+        isListening = false
+        liveTranscription = ""
+        audioPlayer.start()
+        socket.startAudio()
+        voiceStatus = "Live — streaming to backend"
+    }
+
+    private func stopLiveSession() {
+        isLive = false
+        socket.stopAudio()
+        audioPlayer.stop()
+        voiceStatus = "On-device wake word"
+        startListening()                       // resume the local loop
     }
 
     // MARK: Chat bubbles
@@ -285,6 +344,7 @@ final class SierraViewModel: ObservableObject {
     /// for speech leaves the engine tapping a mic the user never authorised, which
     /// yields silence at best.
     func startListening() {
+        guard !isLive else { return }          // the backend holds the mic
         SFSpeechRecognizer.requestAuthorization { [weak self] speech in
             guard speech == .authorized else {
                 Task { @MainActor in self?.voiceStatus = "Speech recognition access denied" }
@@ -324,7 +384,7 @@ final class SierraViewModel: ObservableObject {
             voiceStatus = "Audio engine failed: \(error.localizedDescription)"
             return
         }
-        voiceStatus = "On-device wake word + Gemini Live"
+        voiceStatus = "On-device wake word"
         startRecognition()
     }
 
@@ -348,7 +408,7 @@ final class SierraViewModel: ObservableObject {
     }
 
     private func handle(_ transcript: String) {
-        guard !isSpeaking else { return }            // ignore Sierra's own voice
+        guard !isSpeaking, !isLive else { return }   // ignore Sierra's own voice
         let lower = transcript.lowercased()
         if let r = wakeRange(in: lower) {
             let after = String(lower[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -395,7 +455,9 @@ final class SierraViewModel: ObservableObject {
     /// transcribes its own voice — the exact thing the guard exists to stop —
     /// guess long and it goes deaf to the user for the remainder.
     private func speak(_ text: String) {
-        guard !text.isEmpty else { return }
+        // In a live session the backend streams its own audio; speaking locally
+        // too would have Sierra answer twice, over itself.
+        guard !text.isEmpty, !isLive else { return }
         let u = AVSpeechUtterance(string: text)
         u.voice = AVSpeechSynthesisVoice(language: "en-US")
         u.rate = 0.5
@@ -878,12 +940,18 @@ struct SettingsTab: View {
                         Divider().overlay(Theme.gold.opacity(0.15))
                         infoRow("Voice", vm.voiceStatus)
                         Divider().overlay(Theme.gold.opacity(0.15))
+                        infoRow("Live session", vm.isLive ? "Streaming (backend holds the mic)" : "Off")
+                        Divider().overlay(Theme.gold.opacity(0.15))
+                        infoRow("Face auth", vm.isAuthenticated ? "Authenticated" : "Not authenticated")
+                        Divider().overlay(Theme.gold.opacity(0.15))
                         infoRow("Version", "Sierra 1.0 · metallic-gold")
                     }
                 }
                 HStack(spacing: 12) {
                     actionButton(vm.isListening ? "Stop Listening" : "Start Listening",
                                  icon: vm.isListening ? "stop.fill" : "mic.fill") { vm.toggleVoice() }
+                    actionButton(vm.isLive ? "End Live Voice" : "Live Voice",
+                                 icon: vm.isLive ? "stop.circle.fill" : "waveform.circle.fill") { vm.toggleLiveSession() }
                     actionButton("Say Hello", icon: "hand.wave.fill") { vm.send("Hello Sierra, introduce yourself in one sentence.") }
                 }
                 Spacer()

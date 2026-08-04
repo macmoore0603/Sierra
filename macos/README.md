@@ -55,16 +55,27 @@ The app's voice loop is real-time **on-device**: `SFSpeechRecognizer` + `AVAudio
 do continuous wake-word detection ("Hey Sierra") and live partial transcription with
 no server round-trip.
 
-**Voice (true real-time, streaming).** Pressing the mic — or saying "Hey Sierra" —
-opens a live **Socket.IO** session to the backend (`SierraSocketClient`):
+There are two voice modes, and they are mutually exclusive because only one of
+them can hold the microphone.
+
+**Wake word (default).** `SFSpeechRecognizer` transcribes on-device, the wake
+word starts a capture, a short silence ends it, and the text goes to `/chat`.
+The reply is spoken with the system voice. No audio leaves the machine.
+
+**Live session (Settings → Live Voice).** Hands the mic to the backend and
+streams:
 
 1. the app emits `start_audio`;
 2. the backend's Gemini Live loop streams back `transcription` events
    (`{"sender": "User"|"Sierra", "text": ...}`), rendered into the chat as they
    arrive (the same speaker's bubble grows in place);
-3. `audio_data` chunks (16-bit/24 kHz PCM) are played the instant they arrive via
-   `AudioStreamPlayer`, so you hear Sierra speak in real time;
-4. `stop_audio` ends the turn and the app resumes on-device wake-word listening.
+3. `audio_data` chunks (16-bit/24 kHz PCM) play the instant they arrive via
+   `AudioStreamPlayer`;
+4. `stop_audio` ends the session and the on-device wake-word loop resumes.
+
+While a live session runs, the local recogniser is torn down and local TTS is
+suppressed — otherwise both would capture the same mic and Sierra would answer
+twice, over itself.
 
 The client speaks Engine.IO v4 / Socket.IO v5 directly over
 `URLSessionWebSocketTask` — **no third-party packages**, nothing to add in Xcode.
