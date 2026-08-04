@@ -54,14 +54,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.bringToFront() }
     }
 
+    /// Centre only the first time. Re-centring on every activation throws away
+    /// wherever the user last dragged the window, which is felt every single
+    /// time you clap or click the menu bar item.
+    private var hasCentered = false
+
     func bringToFront() {
         NSApp.activate(ignoringOtherApps: true)
         for w in NSApp.windows where w.canBecomeMain {
             w.collectionBehavior.insert(.moveToActiveSpace)
-            w.center()
+            if !hasCentered { w.center() }
             w.makeKeyAndOrderFront(nil)
             w.orderFrontRegardless()
         }
+        hasCentered = true
     }
 
     @objc func toggleWindow() {
@@ -88,6 +94,92 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
 }
 
+// MARK: - Audio-thread state
+//
+// `installTap` delivers buffers on a real-time audio thread. Everything the tap
+// touches has to be safe to touch from there, so it lives here rather than on
+// the main-actor view model — reaching back into that from the tap is a data
+// race, and Swift 6's concurrency checking rejects it outright.
+private final class AudioSink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var lastClap: Double = 0
+    private let clapThreshold: Float
+
+    /// Called on the audio thread when a double-clap is detected.
+    var onDoubleClap: (() -> Void)?
+
+    init(clapThreshold: Float) { self.clapThreshold = clapThreshold }
+
+    func use(_ request: SFSpeechAudioBufferRecognitionRequest?) {
+        lock.lock(); defer { lock.unlock() }
+        self.request = request
+    }
+
+    func receive(_ buffer: AVAudioPCMBuffer) {
+        // Held across the append so the request cannot be swapped out from
+        // under us mid-call. The critical section is microseconds.
+        lock.lock()
+        request?.append(buffer)
+        lock.unlock()
+        detectClap(Self.rms(buffer))
+    }
+
+    private func detectClap(_ level: Float) {
+        guard level > clapThreshold else { return }
+        let now = Date().timeIntervalSinceReferenceDate
+        let dt = now - lastClap
+        if dt > 0.12 && dt < 0.6 {          // second clap of a pair
+            lastClap = 0
+            onDoubleClap?()
+        } else if dt > 0.12 {               // first clap
+            lastClap = now
+        }
+    }
+
+    private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {
+        guard let ch = buffer.floatChannelData?[0] else { return 0 }
+        let n = Int(buffer.frameLength)
+        guard n > 0 else { return 0 }
+        var sum: Float = 0
+        for i in 0..<n { sum += ch[i] * ch[i] }
+        return sqrt(sum / Float(n))
+    }
+}
+
+// Forwards synthesizer completion to the view model.
+//
+// `didCancel` matters as much as `didFinish`: `stopSpeaking(at:)` ends an
+// utterance through the cancel path only, so listening for finish alone leaves
+// the mic guard stuck on and the wake word dead for the rest of the session.
+private final class SpeechEndObserver: NSObject, AVSpeechSynthesizerDelegate {
+    var onEnd: ((AVSpeechUtterance) -> Void)?
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        onEnd?(utterance)
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        onEnd?(utterance)
+    }
+}
+
+// MARK: - Backend errors
+
+enum SierraBackendError: LocalizedError {
+    case badURL(String)
+    case http(status: Int, body: String)
+    case malformed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .badURL(let s):       return "Invalid backend address: \(s)"
+        case .http(let code, _):   return "Backend returned HTTP \(code)"
+        case .malformed:           return "Unexpected reply from the backend"
+        }
+    }
+}
+
 // MARK: - Real-time view model
 //
 // Owns the live connection to the Sierra backend. Voice turns run over the
@@ -102,28 +194,47 @@ final class SierraViewModel: ObservableObject {
     @Published var liveTranscription = ""       // on-device wake-word partials
     @Published var isConnected = false          // socket handshake complete
     @Published var serverStatus = "Connecting…"
+    @Published var voiceStatus = "On-device wake word + Gemini Live"
 
     let serverURL = "http://localhost:8000"
     private let wakeWords = ["hey sierra", "hey sira", "hello sierra", "ok sierra", "sierra"]
-    private let vadThreshold: Float = 0.015
     private let clapThreshold: Float = 0.16
+    private let requestTimeout: TimeInterval = 30
 
     private let socket = SierraSocketClient()
 
     private let audioEngine = AVAudioEngine()
+    private lazy var sink = AudioSink(clapThreshold: clapThreshold)
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private let synth = AVSpeechSynthesizer()
+    private let speechObserver = SpeechEndObserver()
 
     private enum Mode: Equatable { case idle, capturing }
     private var mode: Mode = .idle
     private var silence: DispatchWorkItem?
     private var isSpeaking = false
-    private var lastClap: Double = 0
+    private var currentUtterance: AVSpeechUtterance?
 
     // MARK: Lifecycle
     func onAppear() {
+        synth.delegate = speechObserver
+        // Identity-matched: a late callback for an utterance we already replaced
+        // must not clear the guard protecting the current one.
+        speechObserver.onEnd = { [weak self] utterance in
+            Task { @MainActor in
+                guard let self, utterance === self.currentUtterance else { return }
+                self.currentUtterance = nil
+                self.isSpeaking = false
+                self.restartRecognition()
+            }
+        }
+        sink.onDoubleClap = {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .sierraActivate, object: nil)
+            }
+        }
         configureSocket()
         socket.connect()
         startListening()
@@ -131,8 +242,13 @@ final class SierraViewModel: ObservableObject {
 
     func onDisappear() {
         socket.disconnect()
-        teardownEngine()
+        // Drop the guard first. Stopping the synthesizer fires the cancel
+        // callback, and with the utterance still matched that would restart
+        // recognition on an engine we are about to tear down.
+        currentUtterance = nil
+        isSpeaking = false
         synth.stopSpeaking(at: .immediate)
+        teardownEngine()
     }
 
     private func configureSocket() {
@@ -165,10 +281,25 @@ final class SierraViewModel: ObservableObject {
     }
 
     // MARK: On-device voice loop  (wake word → capture → /chat → speak)
+    /// Speech recognition and the microphone are two separate grants. Asking only
+    /// for speech leaves the engine tapping a mic the user never authorised, which
+    /// yields silence at best.
     func startListening() {
-        SFSpeechRecognizer.requestAuthorization { [weak self] status in
-            guard status == .authorized else { return }
-            DispatchQueue.main.async { self?.startEngine() }
+        SFSpeechRecognizer.requestAuthorization { [weak self] speech in
+            guard speech == .authorized else {
+                Task { @MainActor in self?.voiceStatus = "Speech recognition access denied" }
+                return
+            }
+            AVCaptureDevice.requestAccess(for: .audio) { micGranted in
+                Task { @MainActor in
+                    guard let self else { return }
+                    guard micGranted else {
+                        self.voiceStatus = "Microphone access denied"
+                        return
+                    }
+                    self.startEngine()
+                }
+            }
         }
     }
 
@@ -176,15 +307,24 @@ final class SierraViewModel: ObservableObject {
         guard !audioEngine.isRunning else { startRecognition(); return }
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
+        // installTap raises an exception on a zero-channel / zero-rate format,
+        // which is what an unavailable input device reports. Refuse instead.
+        guard format.channelCount > 0, format.sampleRate > 0 else {
+            voiceStatus = "No usable audio input device"
+            return
+        }
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-            guard let self else { return }
-            let level = self.rms(buffer)
-            if level > self.vadThreshold { self.request?.append(buffer) }
-            self.detectClap(level)
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [sink] buffer, _ in
+            sink.receive(buffer)
         }
         audioEngine.prepare()
-        do { try audioEngine.start() } catch { print("Audio engine error: \(error)"); return }
+        do {
+            try audioEngine.start()
+        } catch {
+            voiceStatus = "Audio engine failed: \(error.localizedDescription)"
+            return
+        }
+        voiceStatus = "On-device wake word + Gemini Live"
         startRecognition()
     }
 
@@ -194,6 +334,7 @@ final class SierraViewModel: ObservableObject {
         r.shouldReportPartialResults = true
         if recognizer?.supportsOnDeviceRecognition == true { r.requiresOnDeviceRecognition = true }
         request = r
+        sink.use(r)
         task = recognizer?.recognitionTask(with: r) { [weak self] result, _ in
             guard let self, let result else { return }
             Task { @MainActor in self.handle(result.bestTranscription.formattedString) }
@@ -201,6 +342,7 @@ final class SierraViewModel: ObservableObject {
     }
 
     private func restartRecognition() {
+        sink.use(nil)
         request?.endAudio()
         startRecognition()
     }
@@ -248,48 +390,27 @@ final class SierraViewModel: ObservableObject {
     }
 
     // MARK: Speak the reply (system voice — instant, no API, no quota)
+    /// The mic guard is lifted by the synthesizer's own completion callback, not
+    /// by a word-count estimate. Guessing cuts both ways: guess short and Sierra
+    /// transcribes its own voice — the exact thing the guard exists to stop —
+    /// guess long and it goes deaf to the user for the remainder.
     private func speak(_ text: String) {
         guard !text.isEmpty else { return }
-        isSpeaking = true
         let u = AVSpeechUtterance(string: text)
         u.voice = AVSpeechSynthesisVoice(language: "en-US")
         u.rate = 0.5
         synth.stopSpeaking(at: .immediate)
+        // Set after stopping: the cancel callback for the previous utterance is
+        // identity-matched, so it cannot clear the guard we are about to raise.
+        currentUtterance = u
+        isSpeaking = true
         synth.speak(u)
-        // Mute the mic-guard for an estimate of the speech length, then clear
-        // the buffer so we don't transcribe Sierra's own voice.
-        let words = max(1, text.split(separator: " ").count)
-        let estimate = max(1.2, Double(words) / 2.4 + 0.6)
-        DispatchQueue.main.asyncAfter(deadline: .now() + estimate) { [weak self] in
-            self?.isSpeaking = false
-            self?.restartRecognition()
-        }
-    }
-
-    // MARK: Clap-twice → bring the HUD to the front
-    private func detectClap(_ level: Float) {
-        guard level > clapThreshold else { return }
-        let now = Date().timeIntervalSinceReferenceDate
-        let dt = now - lastClap
-        if dt > 0.12 && dt < 0.6 {                    // second clap of a pair
-            lastClap = 0
-            DispatchQueue.main.async { NotificationCenter.default.post(name: .sierraActivate, object: nil) }
-        } else if dt > 0.12 {                         // first clap
-            lastClap = now
-        }
-    }
-
-    private func rms(_ buffer: AVAudioPCMBuffer) -> Float {
-        guard let ch = buffer.floatChannelData?[0] else { return 0 }
-        let n = Int(buffer.frameLength)
-        var sum: Float = 0
-        for i in 0..<n { sum += ch[i] * ch[i] }
-        return sqrt(sum / Float(max(n, 1)))
     }
 
     private func teardownEngine() {
         silence?.cancel(); silence = nil
         if audioEngine.isRunning { audioEngine.stop() }
+        sink.use(nil)
         request?.endAudio(); task?.cancel(); request = nil; task = nil
         audioEngine.inputNode.removeTap(onBus: 0)
     }
@@ -305,22 +426,55 @@ final class SierraViewModel: ObservableObject {
                 self.append(text: response, isUser: false, newBubble: true)
                 self.speak(response)
             } catch {
-                let m = "Connection error. Is the backend running?"
+                // Say which of the three it was. "Is the backend running?" sent
+                // you to check a process that answered fine and returned a 500.
+                let m: String
+                switch error {
+                case let e as SierraBackendError:
+                    m = e.errorDescription ?? "Backend error"
+                case let e as URLError where e.code == .timedOut:
+                    m = "Sierra did not reply within \(Int(requestTimeout))s."
+                default:
+                    m = "Can't reach Sierra at \(serverURL). Is the backend running?"
+                }
                 self.append(text: m, isUser: false, newBubble: true)
                 self.speak(m)
             }
         }
     }
 
+    /// Decoded leniently on purpose. The previous `[String: String]` decode threw
+    /// on any reply carrying a non-string value — a `tool_calls` array, an `ok`
+    /// flag — and the throw surfaced as "is the backend running?" for a backend
+    /// that had just answered correctly.
+    private struct ChatReply: Decodable {
+        let response: String?
+        let error: String?
+    }
+
     private func sendToSierra(_ message: String) async throws -> String {
-        let url = URL(string: "\(serverURL)/chat")!
-        var request = URLRequest(url: url)
+        guard let url = URL(string: "\(serverURL)/chat") else {
+            throw SierraBackendError.badURL(serverURL)
+        }
+        var request = URLRequest(url: url, timeoutInterval: requestTimeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["message": message])
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let result = try JSONDecoder().decode([String: String].self, from: data)
-        return result["response"] ?? "No response"
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw SierraBackendError.http(status: http.statusCode, body: body)
+        }
+
+        guard let reply = try? JSONDecoder().decode(ChatReply.self, from: data) else {
+            throw SierraBackendError.malformed(String(data: data, encoding: .utf8) ?? "")
+        }
+        if let e = reply.error, !e.isEmpty { throw SierraBackendError.malformed(e) }
+        guard let text = reply.response, !text.isEmpty else {
+            throw SierraBackendError.malformed("reply contained no 'response' field")
+        }
+        return text
     }
 }
 
@@ -722,7 +876,7 @@ struct SettingsTab: View {
                         Divider().overlay(Theme.gold.opacity(0.15))
                         infoRow("Real-time execution", "God Mode — on")
                         Divider().overlay(Theme.gold.opacity(0.15))
-                        infoRow("Voice", "On-device wake word + Gemini Live")
+                        infoRow("Voice", vm.voiceStatus)
                         Divider().overlay(Theme.gold.opacity(0.15))
                         infoRow("Version", "Sierra 1.0 · metallic-gold")
                     }
