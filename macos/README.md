@@ -5,8 +5,12 @@ A native SwiftUI/AppKit menu-bar build of Sierra. It runs as a status-bar app
 via on-device speech recognition, and talks to the Sierra backend at
 `http://localhost:8000/chat`.
 
-This is the native counterpart to the Electron app — the shipped binary is
-`Sierra.app.zip` at the repo root.
+This is the native counterpart to the Electron app.
+
+> **`Sierra.app.zip` at the repo root is not this app.** That bundle is the
+> Tauri/Rust build (`CFBundleIdentifier com.sierraos.app`, executable
+> `sierra-os`, no SwiftUI symbols in it). Building the target here produces a
+> separate `Sierra.app` with bundle id `com.macmoore.Sierra`.
 
 ## Files
 
@@ -73,8 +77,32 @@ Set `GEMINI_API_KEY` (and optionally `GEMINI_TEXT_MODEL`, default
 
 ## Building
 
-Open the `Sierra/` sources in Xcode (macOS target), or add them to the existing
-Xcode project, then build and run. Start the backend first:
+```bash
+open macos/Sierra.xcodeproj      # then ⌘R
+```
+
+Or from the command line:
+
+```bash
+xcodebuild -project macos/Sierra.xcodeproj -scheme Sierra -configuration Debug build
+```
+
+The target is configured with:
+
+| Setting | Value |
+|---|---|
+| Bundle identifier | `com.macmoore.Sierra` (matches the `keychain-access-groups` in the entitlements) |
+| Deployment target | macOS 14.0 — required by `Item.swift`, which uses SwiftData's `@Model` |
+| Info.plist | `Sierra/Info.plist`, merged with the generated bundle keys (`GENERATE_INFOPLIST_FILE = YES`), so the usage descriptions survive |
+| Entitlements | `Sierra/Sierra.entitlements` |
+| Signing | Automatic, hardened runtime on |
+
+No packages to resolve — every framework used (SwiftUI, AppKit, AVFoundation,
+Speech, SwiftData, UserNotifications) ships with the OS and is linked
+automatically from its `import`. Set your team in **Signing & Capabilities** on
+first build.
+
+Start the backend first, or the app launches with nothing to talk to:
 
 ```bash
 pip install -r requirements.txt          # from repo root

@@ -32,6 +32,13 @@ out/
 .vscode/
 .idea/
 
+# Xcode — per-user state and build output, never the project itself
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.xcscmblueprint
+*.xccheckout
+
 # OS
 .DS_Store
 Thumbs.db
