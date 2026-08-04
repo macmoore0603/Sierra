@@ -148,8 +148,9 @@ struct TelemetryPanel: View {
 
 struct SpectrumGraph: View {
     var active: Bool
+    @ObservedObject private var gate = RenderGate.shared
     var body: some View {
-        TimelineView(.animation) { tl in
+        TimelineView(.animation(minimumInterval: nil, paused: !gate.isVisible)) { tl in
             Canvas { ctx, size in
                 let t = tl.date.timeIntervalSinceReferenceDate
                 let bw: CGFloat = 4, gap: CGFloat = 3
@@ -170,8 +171,9 @@ struct SpectrumGraph: View {
 
 struct LineGraph: View {
     var seed: Double = 0
+    @ObservedObject private var gate = RenderGate.shared
     var body: some View {
-        TimelineView(.animation) { tl in
+        TimelineView(.animation(minimumInterval: nil, paused: !gate.isVisible)) { tl in
             Canvas { ctx, size in
                 let t = tl.date.timeIntervalSinceReferenceDate + seed
                 var path = Path()
