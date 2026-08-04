@@ -197,6 +197,14 @@ final class SierraViewModel: ObservableObject {
     @Published var voiceStatus = "On-device wake word"
     @Published var isLive = false               // backend Gemini Live session running
     @Published var isAuthenticated = true
+    @Published var isSending = false            // a /chat round-trip is in flight
+
+    /// Counted rather than a plain flag: the wake-word loop can finalise a second
+    /// command while the first is still in flight, and the earlier reply landing
+    /// must not clear the indicator for the one still running.
+    private var inFlight = 0 {
+        didSet { isSending = inFlight > 0 }
+    }
 
     let serverURL = "http://localhost:8000"
     private let wakeWords = ["hey sierra", "hey sira", "hello sierra", "ok sierra", "sierra"]
@@ -482,7 +490,9 @@ final class SierraViewModel: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         append(text: trimmed, isUser: true, newBubble: true)
+        inFlight += 1
         Task {
+            defer { inFlight -= 1 }
             do {
                 let response = try await sendToSierra(trimmed)
                 self.append(text: response, isUser: false, newBubble: true)

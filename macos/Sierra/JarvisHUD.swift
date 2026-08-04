@@ -275,6 +275,9 @@ struct JarvisHUD: View {
     @Binding var inputText: String
     @FocusState private var focused: Bool
 
+    /// Scroll anchor for the in-flight indicator, which has no Message id.
+    fileprivate static let thinkingID = "sierra.thinking"
+
     var body: some View {
         VStack(spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
@@ -345,12 +348,20 @@ struct JarvisHUD: View {
                     ForEach(vm.messages) { msg in
                         ChatBubble(text: msg.text, isUser: msg.isUser).id(msg.id)
                     }
+                    // Without this a slow backend looks identical to a dead one
+                    // for as long as the request takes.
+                    if vm.isSending {
+                        ThinkingIndicator().id(Self.thinkingID)
+                    }
                 }
                 .padding(.vertical, 4)
             }
             .frame(height: 230)
             .onChange(of: vm.messages.last?.id) { _, _ in scrollEnd(proxy) }
             .onChange(of: vm.messages.last?.text) { _, _ in scrollEnd(proxy) }
+            .onChange(of: vm.isSending) { _, sending in
+                if sending { withAnimation { proxy.scrollTo(Self.thinkingID, anchor: .bottom) } }
+            }
         }
     }
 
@@ -399,5 +410,46 @@ struct JarvisHUD: View {
     private func scrollEnd(_ proxy: ScrollViewProxy) {
         guard let id = vm.messages.last?.id else { return }
         withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .bottom) }
+    }
+}
+
+// MARK: - In-flight indicator
+
+/// Three pulsing dots shown while a /chat round-trip is outstanding. Purely
+/// cosmetic, but without it a slow backend is indistinguishable from a dead one
+/// for the full length of the request.
+struct ThinkingIndicator: View {
+    @State private var phase = 0.0
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(Theme.metalGold)
+                    .frame(width: 6, height: 6)
+                    .opacity(opacity(for: i))
+            }
+            Text("SIERRA IS THINKING")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(1.5)
+                .foregroundColor(Theme.textDim)
+                .padding(.leading, 4)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(Capsule().fill(Theme.panel.opacity(0.7)))
+        .overlay(Capsule().strokeBorder(Theme.gold.opacity(0.25), lineWidth: 1))
+        .onAppear {
+            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                phase = 3
+            }
+        }
+    }
+
+    /// Staggered so the dots chase each other rather than blinking in unison.
+    private func opacity(for index: Int) -> Double {
+        let t = (phase - Double(index)).truncatingRemainder(dividingBy: 3)
+        let d = min(abs(t), 3 - abs(t))
+        return 0.25 + 0.75 * max(0, 1 - d)
     }
 }
