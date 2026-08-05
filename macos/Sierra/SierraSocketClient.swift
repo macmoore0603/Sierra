@@ -41,9 +41,29 @@ final class SierraSocketClient: NSObject, URLSessionWebSocketDelegate {
     private var shouldReconnect = true
     private var reconnectAttempts = 0
     private let maxReconnectDelay: Double = 30
-    private lazy var session: URLSession = {
-        URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+
+    /// Every piece of mutable state below is confined to this queue.
+    ///
+    /// It is also the session's delegate queue, so socket callbacks — receive,
+    /// send completions, the delegate methods — land here too. Previously those
+    /// arrived on an arbitrary background queue while `connect` and `disconnect`
+    /// ran on main, leaving `task`, `isConnected` and `reconnectAttempts` racing.
+    /// Serial, so no lock is needed.
+    private let queue: OperationQueue = {
+        let q = OperationQueue()
+        q.maxConcurrentOperationCount = 1
+        q.name = "com.macmoore.Sierra.socket"
+        return q
     }()
+
+    private lazy var session: URLSession = {
+        URLSession(configuration: .default, delegate: self, delegateQueue: queue)
+    }()
+
+    /// Hop onto the state queue, unless already on it.
+    private func onQueue(_ block: @escaping () -> Void) {
+        if OperationQueue.current === queue { block() } else { queue.addOperation(block) }
+    }
 
     init(host: String = "localhost", port: Int = 8000) {
         self.url = URL(string: "ws://\(host):\(port)/socket.io/?EIO=4&transport=websocket")!
@@ -52,20 +72,26 @@ final class SierraSocketClient: NSObject, URLSessionWebSocketDelegate {
 
     // MARK: - Lifecycle
     func connect() {
-        shouldReconnect = true
-        guard task == nil else { return }
-        let t = session.webSocketTask(with: url)
-        task = t
-        t.resume()
-        receiveLoop()
+        onQueue { [weak self] in
+            guard let self else { return }
+            self.shouldReconnect = true
+            guard self.task == nil else { return }
+            let t = self.session.webSocketTask(with: self.url)
+            self.task = t
+            t.resume()
+            self.receiveLoop()
+        }
     }
 
     func disconnect() {
-        shouldReconnect = false       // stop auto-reconnecting
-        sendRaw("41")                 // Socket.IO DISCONNECT
-        task?.cancel(with: .goingAway, reason: nil)
-        task = nil
-        setConnected(false)
+        onQueue { [weak self] in
+            guard let self else { return }
+            self.shouldReconnect = false   // stop auto-reconnecting
+            self.sendRaw("41")             // Socket.IO DISCONNECT
+            self.task?.cancel(with: .goingAway, reason: nil)
+            self.task = nil
+            self.setConnected(false)
+        }
     }
 
     /// Reconnect after a capped exponential backoff, so the real-time link is
@@ -75,34 +101,45 @@ final class SierraSocketClient: NSObject, URLSessionWebSocketDelegate {
         let delay = min(maxReconnectDelay, pow(2.0, Double(reconnectAttempts)))
         reconnectAttempts += 1
         deliver { $0.onStatus?(String(format: "Reconnecting in %.0fs…", delay)) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self, self.shouldReconnect, self.task == nil else { return }
-            self.connect()
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            self.onQueue {
+                guard self.shouldReconnect, self.task == nil else { return }
+                self.connect()
+            }
         }
     }
 
     // MARK: - High-level API
     /// Start the backend's real-time Gemini Live audio session.
     func startAudio() {
-        if isConnected {
-            emit("start_audio", ["source": "macos-native"])
-        } else {
-            pendingStartAudio = true   // fire as soon as the handshake completes
+        onQueue { [weak self] in
+            guard let self else { return }
+            if self.isConnected {
+                self.emit("start_audio", ["source": "macos-native"])
+            } else {
+                self.pendingStartAudio = true  // fire once the handshake completes
+            }
         }
     }
 
     func stopAudio() {
-        pendingStartAudio = false
-        emit("stop_audio")
+        onQueue { [weak self] in
+            guard let self else { return }
+            self.pendingStartAudio = false
+            self.emit("stop_audio")
+        }
     }
 
     // MARK: - Emit
     func emit(_ event: String, _ payload: Any? = nil) {
-        var arr: [Any] = [event]
-        if let payload { arr.append(payload) }
-        guard let data = try? JSONSerialization.data(withJSONObject: arr),
-              let json = String(data: data, encoding: .utf8) else { return }
-        sendRaw("42" + json)           // 4 = message, 2 = EVENT
+        onQueue { [weak self] in
+            var arr: [Any] = [event]
+            if let payload { arr.append(payload) }
+            guard let data = try? JSONSerialization.data(withJSONObject: arr),
+                  let json = String(data: data, encoding: .utf8) else { return }
+            self?.sendRaw("42" + json)     // 4 = message, 2 = EVENT
+        }
     }
 
     private func sendRaw(_ text: String) {

@@ -8,6 +8,39 @@
 //
 
 import SwiftUI
+import AppKit
+
+// MARK: - Render gate
+
+/// Tracks whether the app's windows are actually on screen.
+///
+/// The HUD's three visualisers drive themselves with `TimelineView(.animation)`,
+/// which re-runs their `Canvas` draw closure at the display's refresh rate for
+/// as long as the view exists — including while the window sits fully covered by
+/// another app, or behind something full-screen. For an assistant intended to
+/// stay running all day, that is a continuous wake to redraw pixels nobody can
+/// see. macOS reports exactly this condition via `NSApplication.occlusionState`.
+///
+/// Pausing only while invisible, so nothing changes about how the HUD looks or
+/// moves whenever it is actually in front of someone.
+@MainActor
+final class RenderGate: ObservableObject {
+    static let shared = RenderGate()
+
+    @Published private(set) var isVisible = true
+
+    private init() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeOcclusionStateNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor [weak self] in
+                self?.isVisible = NSApp.occlusionState.contains(.visible)
+            }
+        }
+    }
+}
 
 // MARK: - God Mode status pills (⚡ DAEMON · 🎤 HEY SIERRA · ✋ GESTURES · 👁 PRESENCE)
 
@@ -47,9 +80,10 @@ struct StatusPills: View {
 
 struct TopAudioBar: View {
     var active: Bool
+    @ObservedObject private var gate = RenderGate.shared
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: nil, paused: !gate.isVisible)) { timeline in
             Canvas { ctx, size in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 let barW: CGFloat = 3
